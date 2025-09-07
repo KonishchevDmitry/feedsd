@@ -48,6 +48,7 @@ func Write(feed *Feed, writer io.Writer) error {
 	return encoder.Encode(&rss)
 }
 
+// FIXME(konishchev): Rewrite
 func Generate(origFeed *Feed, postprocess bool) ([]byte, error) {
 	feed := *origFeed
 
