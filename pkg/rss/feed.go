@@ -2,9 +2,11 @@ package rss
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
+// FIXME(konishchev): Rewrite all below
 // FIXME(konishchev): Rewrite to option
 
 type Feed struct {
@@ -29,6 +31,23 @@ func NewFeed(title string, link string) *Feed {
 
 func (f *Feed) AddItem(time time.Time, title string, link string, description string) {
 	f.Items = append(f.Items, NewItem(time, title, link, description))
+}
+
+func (f *Feed) Filter(filter func(item *Item) bool) {
+	f.Items = slices.DeleteFunc(f.Items, func(item *Item) bool {
+		return !filter(item)
+	})
+}
+
+func (f *Feed) BlockCategories(blockList ...string) {
+	f.Filter(func(item *Item) bool {
+		for _, category := range item.Categories {
+			if slices.Contains(blockList, category) {
+				return false
+			}
+		}
+		return true
+	})
 }
 
 func (f *Feed) String() string {
