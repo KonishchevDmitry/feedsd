@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/KonishchevDmitry/newslib/internal/util"
+	newslib "github.com/KonishchevDmitry/newslib/pkg"
 	"github.com/KonishchevDmitry/newslib/pkg/rss"
 )
 
@@ -36,7 +37,7 @@ func Serve(ctx context.Context, addressPort string) error {
 	return server.ListenAndServe()
 }
 
-func Register(path string, generator func(context.Context) (*rss.Feed, error)) {
+func Register(path string, generator newslib.FeedGenerator) {
 	register(path, func(w http.ResponseWriter, r *http.Request) {
 		generate(w, r, generator)
 	})
@@ -51,10 +52,10 @@ func register(path string, handler func(http.ResponseWriter, *http.Request)) {
 	})
 }
 
-func generate(w http.ResponseWriter, r *http.Request, generator func(context.Context) (*rss.Feed, error)) {
+func generate(w http.ResponseWriter, r *http.Request, generator newslib.FeedGenerator) {
 	ctx := r.Context()
 
-	feed, err := generator(ctx)
+	feed, err := generator.Get(ctx)
 	if err != nil {
 		status, level := http.StatusBadGateway, zapcore.ErrorLevel
 		for err := err; err != nil; err = errors.Unwrap(err) {

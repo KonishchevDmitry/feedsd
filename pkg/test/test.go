@@ -4,16 +4,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/KonishchevDmitry/newslib/pkg/rss"
+	newslib "github.com/KonishchevDmitry/newslib/pkg"
 	"github.com/stretchr/testify/require"
 )
 
 // FIXME(konishchev): Implement
-func Feed(t *testing.T, generator func(ctx context.Context) (*rss.Feed, error), mayBeEmpty bool) {
+func Feed(t *testing.T, generator newslib.FeedGenerator, mayBeEmpty bool) {
 	t.Parallel()
 	ctx := context.Background()
 
-	feed, err := generator(ctx)
+	feed, err := generator.Get(ctx)
 	require.NoError(t, err)
 	if !mayBeEmpty {
 		require.NotEmpty(t, feed.Items)

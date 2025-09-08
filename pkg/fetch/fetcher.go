@@ -7,12 +7,13 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"time"
 
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 )
 
-func fetch[T any](ctx context.Context, url string, allowedMediaTypes []string, parser func(body io.Reader) (T, error)) (_ T, retErr error) {
+func fetch[T any](ctx context.Context, url *url.URL, allowedMediaTypes []string, parser func(body io.Reader) (T, error)) (_ T, retErr error) {
 	defer func() {
 		if retErr != nil {
 			retErr = fmt.Errorf("failed to fetch %s: %w", url, retErr)
@@ -25,7 +26,7 @@ func fetch[T any](ctx context.Context, url string, allowedMediaTypes []string, p
 		Timeout: time.Minute,
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url.String(), nil)
 	if err != nil {
 		return zero, err
 	}
