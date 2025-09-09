@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	newslib "github.com/KonishchevDmitry/newslib/pkg"
+	"github.com/KonishchevDmitry/newslib/pkg/feed"
 	"github.com/stretchr/testify/require"
 )
 
 // FIXME(konishchev): Implement
-func Feed(t *testing.T, generator newslib.FeedGenerator, mayBeEmpty bool) {
+func Feed(t *testing.T, generator feed.Feed, mayBeEmpty bool) {
 	t.Parallel()
 	ctx := context.Background()
 
