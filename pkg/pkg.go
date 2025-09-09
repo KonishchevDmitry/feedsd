@@ -9,6 +9,7 @@ import (
 )
 
 type FeedGenerator interface {
+	Name() string
 	Get(ctx context.Context) (*rss.Feed, error)
 }
 
