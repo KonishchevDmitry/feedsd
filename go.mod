@@ -1,6 +1,6 @@
 module github.com/KonishchevDmitry/newslib
 
-go 1.24.2
+go 1.25.1
 
 require (
 	github.com/KonishchevDmitry/go-easy-logging v0.0.0-20230419175548-32cfd9299051 // indirect
