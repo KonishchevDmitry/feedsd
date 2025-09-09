@@ -137,6 +137,7 @@ func (c *Scraper) daemon(ctx context.Context) {
 		}
 		if err == nil {
 			logging.L(ctx).Infof("%q feed scraped.", c.feed.Name())
+			c.stat.feedTime.Store(time.Now())
 			c.stat.success.Inc()
 		} else if util.IsTemporaryError(err) {
 			logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", c.feed.Name(), err)
