@@ -1,6 +1,6 @@
 package fetch
 
-import "github.com/KonishchevDmitry/newslib/internal/util"
+import "github.com/KonishchevDmitry/feedsd/internal/util"
 
 type temporaryError struct {
 	error error

@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/KonishchevDmitry/newslib/pkg/rss"
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
 func Feed(ctx context.Context, url *url.URL) (*rss.Feed, error) {

@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KonishchevDmitry/feedsd/internal/util"
+	"github.com/KonishchevDmitry/feedsd/pkg/feed"
+	"github.com/KonishchevDmitry/feedsd/pkg/mo"
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
-	"github.com/KonishchevDmitry/newslib/internal/util"
-	"github.com/KonishchevDmitry/newslib/pkg/feed"
-	"github.com/KonishchevDmitry/newslib/pkg/mo"
-	"github.com/KonishchevDmitry/newslib/pkg/rss"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 )

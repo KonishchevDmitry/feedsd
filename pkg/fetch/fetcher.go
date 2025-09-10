@@ -30,7 +30,7 @@ func fetch[T any](ctx context.Context, url *url.URL, allowedMediaTypes []string,
 	if err != nil {
 		return zero, err
 	}
-	request.Header.Add("User-Agent", "github.com/KonishchevDmitry/newslib")
+	request.Header.Add("User-Agent", "github.com/KonishchevDmitry/feedsd")
 
 	response, err := client.Do(request)
 	if err != nil {

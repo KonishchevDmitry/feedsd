@@ -1,4 +1,4 @@
-module github.com/KonishchevDmitry/newslib
+module github.com/KonishchevDmitry/feedsd
 
 go 1.25.1
 

@@ -3,7 +3,7 @@ package feed
 import (
 	"context"
 
-	"github.com/KonishchevDmitry/newslib/pkg/rss"
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
 type Feed interface {

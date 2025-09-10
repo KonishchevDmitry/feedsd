@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/KonishchevDmitry/newslib/pkg/feed"
+	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

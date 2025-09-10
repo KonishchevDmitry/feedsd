@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/KonishchevDmitry/newslib/internal/scraper"
-	"github.com/KonishchevDmitry/newslib/internal/util"
-	"github.com/KonishchevDmitry/newslib/pkg/feed"
-	"github.com/KonishchevDmitry/newslib/pkg/rss"
+	"github.com/KonishchevDmitry/feedsd/internal/scraper"
+	"github.com/KonishchevDmitry/feedsd/internal/util"
+	"github.com/KonishchevDmitry/feedsd/pkg/feed"
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
 var feedsMux = http.NewServeMux()

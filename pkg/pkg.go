@@ -1,4 +1,4 @@
-package newslib
+package feedsd
 
 import (
 	"fmt"

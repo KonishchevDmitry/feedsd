@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/KonishchevDmitry/newslib/pkg/feed"
+	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 	"github.com/stretchr/testify/require"
 )
 
