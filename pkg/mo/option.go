@@ -323,7 +323,7 @@ func (o *Option[T]) Scan(src any) error {
 		return nil
 	}
 
-	// is is only possible to assert interfaces, so convert first
+	// is only possible to assert interfaces, so convert first
 	// https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#why-not-permit-type-assertions-on-values-whose-type-is-a-type-parameter
 	var t T
 	if tScanner, ok := interface{}(&t).(sql.Scanner); ok {
@@ -350,7 +350,7 @@ func (o *Option[T]) Scan(src any) error {
 // Value implements the driver Valuer interface.
 func (o Option[T]) Value() (driver.Value, error) {
 	if !o.isPresent {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	return driver.DefaultParameterConverter.ConvertValue(o.value)

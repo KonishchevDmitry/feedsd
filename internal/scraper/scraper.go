@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
+	logging "github.com/KonishchevDmitry/go-easy-logging"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
+
 	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 	"github.com/KonishchevDmitry/feedsd/pkg/mo"
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
-	logging "github.com/KonishchevDmitry/go-easy-logging"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/atomic"
 )
 
 const scrapePeriod = time.Hour

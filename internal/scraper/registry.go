@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 )
 
 var Registry = make(ScraperRegistry)
 
-type ScraperRegistry map[string]*Scraper
+type ScraperRegistry map[string]*Scraper //nolint: revive
 
 func (r ScraperRegistry) Add(feed feed.Feed) (*Scraper, error) {
 	name := feed.Name()

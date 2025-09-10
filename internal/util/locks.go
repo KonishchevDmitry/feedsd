@@ -15,7 +15,7 @@ func (l *GuardedLock) Guard() LockGuard {
 func (l *GuardedLock) Lock() LockGuard {
 	lock := l.Guard()
 	lock.Lock()
-	return lock
+	return lock //nolint:govet
 }
 
 type LockGuard struct {

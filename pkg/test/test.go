@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 	"github.com/stretchr/testify/require"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 )
 
 // FIXME(konishchev): Implement

@@ -3,6 +3,8 @@ package rss
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 var minimalRSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -67,43 +69,37 @@ var fullRSS = `<?xml version="1.0" encoding="UTF-8"?>
 </rss>`
 
 func TestParseMinimal(t *testing.T) {
+	t.Parallel()
 	testParse(t, minimalRSS)
 }
 
 func TestParseFull(t *testing.T) {
+	t.Parallel()
 	testParse(t, fullRSS)
 }
 
 func TestReadRss091WithCustomEncoding(t *testing.T) {
+	t.Parallel()
+
 	file, err := os.Open("testdata/rss-0.91-with-custom-encoding.xml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, file.Close())
+	}()
 
 	feed, err := Read(file)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if feed.Description != "Свежачок от LostFilm.TV" ||
-		feed.Items[0].Title != "Непокорная Земля (Defiance). Мир, который мы захватим/Последние единороги (The World We Seize/The Last Unicorns) [MP4]. (S03E01-2)" {
-		t.Fatalf("Got an invalid feed: %s", feed)
-	}
+	require.Equal(t, "Свежачок от LostFilm.TV", feed.Description)
+	require.Equal(t, "Непокорная Земля (Defiance). Мир, который мы захватим/Последние единороги (The World We Seize/The Last Unicorns) [MP4]. (S03E01-2)", feed.Items[0].Title)
 }
 
 func testParse(t *testing.T, data string) {
 	feed, err := Parse([]byte(data))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	generatedData, err := Generate(feed, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if string(generatedData) != data {
-		t.Fatalf("Feeds don't match:\n%s\nvs\n%s", generatedData, data)
-	}
+	require.Equal(t, data, string(generatedData))
 }

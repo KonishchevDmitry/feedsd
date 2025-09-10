@@ -33,6 +33,7 @@ func Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode 
 		return err
 	}
 
+	//nolint:gosec
 	feedsServer := http.Server{
 		Addr:     feedsAddr,
 		Handler:  feedsMux,
@@ -52,6 +53,7 @@ func Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode 
 		ErrorLog: newPrometheusLogger(logging.L(ctx)),
 	}))
 
+	//nolint:gosec
 	metricsServer := http.Server{
 		Addr:     metricsAddr,
 		Handler:  metricsMux,
