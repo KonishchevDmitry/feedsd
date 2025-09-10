@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// FIXME(konishchev): Rewrite all below
-// FIXME(konishchev): Rewrite to option
-
 type Feed struct {
 	Title       string   `xml:"title"`
 	Link        string   `xml:"link"`

@@ -8,11 +8,11 @@ import (
 
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/samber/mo"
 	"go.uber.org/atomic"
 
 	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
-	"github.com/KonishchevDmitry/feedsd/pkg/mo"
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
