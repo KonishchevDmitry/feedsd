@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -26,8 +27,8 @@ type Scraper struct {
 	waitGroup sync.WaitGroup
 
 	lock    util.GuardedLock
-	result  mo.Option[scrapeResult]
-	waiters []chan<- scrapeResult
+	result  mo.Option[ScrapeResult]
+	waiters []chan<- ScrapeResult
 }
 
 func newScraper(feed feed.Feed) *Scraper {
@@ -42,80 +43,80 @@ func newScraper(feed feed.Feed) *Scraper {
 	}
 }
 
-func (c *Scraper) start(ctx context.Context, develMode bool) {
+func (s *Scraper) start(ctx context.Context, develMode bool) {
 	if !develMode {
 		select {
-		case c.started <- struct{}{}:
+		case s.started <- struct{}{}:
 		default:
 		}
 	}
-	c.waitGroup.Go(func() {
-		c.daemon(ctx)
+	s.waitGroup.Go(func() {
+		s.daemon(ctx)
 	})
 }
 
-func (c *Scraper) stop(ctx context.Context) {
-	logging.L(ctx).Infof("Stopping %q scrapper...", c.feed.Name())
-	close(c.stopped)
-	c.waitGroup.Wait()
-	logging.L(ctx).Infof("%q scrapper has stopped.", c.feed.Name())
+func (s *Scraper) stop(ctx context.Context) {
+	logging.L(ctx).Infof("Stopping %q scrapper...", s.feed.Name())
+	close(s.stopped)
+	s.waitGroup.Wait()
+	logging.L(ctx).Infof("%q scrapper has stopped.", s.feed.Name())
 }
 
-func (c *Scraper) Get(ctx context.Context) (*rss.Feed, error) {
-	lock := c.lock.Lock()
+func (s *Scraper) Get(ctx context.Context) ScrapeResult {
+	lock := s.lock.Lock()
 	defer lock.UnlockIfLocked()
 
-	if result, ok := c.result.Get(); ok {
-		return result.feed, result.error
+	if result, ok := s.result.Get(); ok {
+		return result
 	}
 
-	waiter := make(chan scrapeResult, 1)
-	c.waiters = append(c.waiters, waiter)
+	waiter := make(chan ScrapeResult, 1)
+	s.waiters = append(s.waiters, waiter)
 	lock.Unlock()
 
 	select {
-	case c.started <- struct{}{}:
+	case s.started <- struct{}{}:
 	default:
 	}
 
 	select {
 	case result := <-waiter:
-		return result.feed, result.error
+		return result
 
-	case <-c.stopped:
-		return nil, context.Canceled
+	case <-s.stopped:
+		return makeErrorResult(http.StatusServiceUnavailable)
 
 	case <-ctx.Done():
 		lock.Lock()
-		if index := slices.Index(c.waiters, waiter); index != -1 {
-			c.waiters = slices.Delete(c.waiters, index, index+1)
+		if index := slices.Index(s.waiters, waiter); index != -1 {
+			s.waiters = slices.Delete(s.waiters, index, index+1)
 		}
-		return nil, ctx.Err()
+		return makeErrorResult(http.StatusGatewayTimeout)
 	}
 }
 
-func (c *Scraper) Collect(metrics chan<- prometheus.Metric) {
+func (s *Scraper) Collect(metrics chan<- prometheus.Metric) {
 	metrics <- prometheus.MustNewConstMetric(
 		feedAgeMetric, prometheus.GaugeValue,
-		time.Since(c.stat.feedTime.Load()).Seconds(), c.feed.Name())
+		time.Since(s.stat.feedTime.Load()).Seconds(), s.feed.Name())
 
 	metrics <- prometheus.MustNewConstMetric(
 		feedStatusMetric, prometheus.CounterValue,
-		float64(c.stat.success.Load()), c.feed.Name(), "success")
+		float64(s.stat.success.Load()), s.feed.Name(), "success")
 
 	metrics <- prometheus.MustNewConstMetric(
 		feedStatusMetric, prometheus.CounterValue,
-		float64(c.stat.unavailable.Load()), c.feed.Name(), "unavailable")
+		float64(s.stat.unavailable.Load()), s.feed.Name(), "unavailable")
 
 	metrics <- prometheus.MustNewConstMetric(
 		feedStatusMetric, prometheus.CounterValue,
-		float64(c.stat.error.Load()), c.feed.Name(), "error")
+		float64(s.stat.error.Load()), s.feed.Name(), "error")
 }
 
-func (c *Scraper) daemon(ctx context.Context) {
+func (s *Scraper) daemon(ctx context.Context) {
 	select {
-	case <-c.started:
-	case <-c.stopped:
+	case <-s.started:
+	case <-s.stopped:
 		return
 	}
 
@@ -126,32 +127,16 @@ func (c *Scraper) daemon(ctx context.Context) {
 	for {
 		select {
 		case <-timer.C:
-		case <-c.stopped:
+		case <-s.stopped:
 			return
 		}
 
-		logging.L(ctx).Infof("Scraping %q feed...", c.feed.Name())
-		feed, err := c.feed.Get(ctx)
-		result := scrapeResult{
-			feed:  feed,
-			error: err,
-		}
-		if err == nil {
-			logging.L(ctx).Infof("%q feed scraped.", c.feed.Name())
-			c.stat.feedTime.Store(time.Now())
-			c.stat.success.Inc()
-		} else if util.IsTemporaryError(err) {
-			logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", c.feed.Name(), err)
-			c.stat.unavailable.Inc()
-		} else {
-			logging.L(ctx).Errorf("Failed to scrape %q feed: %s.", c.feed.Name(), err)
-			c.stat.error.Inc()
-		}
+		result := s.scrape(ctx)
 
-		lock := c.lock.Lock()
-		c.result = mo.Some(result)
-		waiters := c.waiters
-		c.waiters = nil
+		lock := s.lock.Lock()
+		s.result = mo.Some(result)
+		waiters := s.waiters
+		s.waiters = nil
 		lock.Unlock()
 
 		for _, waiter := range waiters {
@@ -162,9 +147,49 @@ func (c *Scraper) daemon(ctx context.Context) {
 	}
 }
 
-type scrapeResult struct {
-	feed  *rss.Feed
-	error error
+func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
+	logging.L(ctx).Infof("Scraping %q feed...", s.feed.Name())
+
+	if feed, err := s.feed.Get(ctx); err == nil {
+		logging.L(ctx).Infof("%q feed scraped.", s.feed.Name())
+		feed.Normalize()
+
+		if data, err := rss.Generate(feed); err == nil {
+			s.stat.feedTime.Store(time.Now())
+			s.stat.success.Inc()
+			return makeScrapeResult(http.StatusOK, rss.ContentType, data)
+		} else {
+			logging.L(ctx).Errorf("Failed to render %s RSS feed: %s.", s.feed.Name(), err)
+			s.stat.error.Inc()
+			return makeErrorResult(http.StatusInternalServerError)
+		}
+	} else if util.IsTemporaryError(err) {
+		logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
+		s.stat.unavailable.Inc()
+		return makeErrorResult(http.StatusGatewayTimeout)
+	} else {
+		logging.L(ctx).Errorf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
+		s.stat.error.Inc()
+		return makeErrorResult(http.StatusBadGateway)
+	}
+}
+
+type ScrapeResult struct {
+	HTTPStatus  int
+	ContentType string
+	Data        []byte
+}
+
+func makeScrapeResult(status int, contentType string, data []byte) ScrapeResult {
+	return ScrapeResult{
+		HTTPStatus:  status,
+		ContentType: contentType,
+		Data:        data,
+	}
+}
+
+func makeErrorResult(status int) ScrapeResult {
+	return makeScrapeResult(status, "text/plain", []byte("Failed to generate the RSS feed"))
 }
 
 type scrapingStat struct {

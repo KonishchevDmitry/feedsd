@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/html/charset"
 )
 
+const ContentType = "application/rss+xml"
+
 func Read(reader io.Reader) (*Feed, error) {
 	rss := rssRoot{}
 
@@ -48,30 +50,10 @@ func Write(feed *Feed, writer io.Writer) error {
 	return encoder.Encode(&rss)
 }
 
-// FIXME(konishchev): Rewrite
-func Generate(origFeed *Feed, postprocess bool) ([]byte, error) {
-	feed := *origFeed
-
-	if postprocess {
-		feed.Items = nil
-		trueValue := true
-
-		for _, item := range origFeed.Items {
-			item := *item
-
-			if guid := &item.GUID; guid.ID == "" && item.Link != "" {
-				guid.ID = item.Link
-				guid.IsPermaLink = &trueValue
-			}
-
-			feed.Items = append(feed.Items, &item)
-		}
-	}
-
+func Generate(feed *Feed) ([]byte, error) {
 	var buffer bytes.Buffer
-	if err := Write(&feed, &buffer); err != nil {
+	if err := Write(feed, &buffer); err != nil {
 		return nil, err
 	}
-
 	return buffer.Bytes(), nil
 }

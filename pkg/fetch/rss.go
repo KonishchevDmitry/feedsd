@@ -8,5 +8,5 @@ import (
 )
 
 func Feed(ctx context.Context, url *url.URL) (*rss.Feed, error) {
-	return fetch(ctx, url, []string{"application/rss+xml", "application/xml", "text/xml"}, rss.Read)
+	return fetch(ctx, url, []string{rss.ContentType, "application/xml", "text/xml"}, rss.Read)
 }

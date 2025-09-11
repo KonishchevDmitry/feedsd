@@ -98,7 +98,7 @@ func testParse(t *testing.T, data string) {
 	feed, err := Parse([]byte(data))
 	require.NoError(t, err)
 
-	generatedData, err := Generate(feed, false)
+	generatedData, err := Generate(feed)
 	require.NoError(t, err)
 
 	require.Equal(t, data, string(generatedData))

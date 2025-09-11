@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -14,9 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/KonishchevDmitry/feedsd/internal/scraper"
-	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
-	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
 var feedsMux = http.NewServeMux()
@@ -122,7 +119,10 @@ func Register(feed feed.Feed) {
 	}
 
 	register(fmt.Sprintf("/%s.rss", feed.Name()), func(w http.ResponseWriter, r *http.Request) {
-		generate(w, r, scraper)
+		response := scraper.Get(r.Context())
+		w.Header().Set("Content-Type", response.ContentType)
+		w.WriteHeader(response.HTTPStatus)
+		_, _ = w.Write(response.Data)
 	})
 }
 
@@ -133,38 +133,4 @@ func register(path string, handler func(http.ResponseWriter, *http.Request)) {
 		handler(w, r)
 		logging.L(ctx).Debugf("%s %s finished.", r.Method, r.RequestURI)
 	})
-}
-
-func generate(w http.ResponseWriter, r *http.Request, scraper *scraper.Scraper) {
-	ctx := r.Context()
-
-	feed, err := scraper.Get(ctx)
-	if err != nil {
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return
-		}
-
-		status := http.StatusBadGateway
-		if util.IsTemporaryError(err) || errors.Is(err, context.Canceled) {
-			status = http.StatusGatewayTimeout
-		}
-
-		writeError(w, status)
-		return
-	}
-
-	// FIXME(konishchev): Must be read-only
-	data, err := rss.Generate(feed, true)
-	if err != nil {
-		logging.L(ctx).Errorf("Failed to render %s RSS feed: %s.", r.RequestURI, err)
-		writeError(w, http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/rss+xml")
-	_, _ = w.Write(data)
-}
-
-func writeError(w http.ResponseWriter, status int) {
-	http.Error(w, "Failed to generate the RSS feed", status)
 }

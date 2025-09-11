@@ -47,12 +47,23 @@ func (f *Feed) BlockCategories(blockList ...string) {
 	})
 }
 
+func (f *Feed) Normalize() {
+	trueValue := true
+
+	for _, item := range f.Items {
+		if guid := &item.GUID; guid.ID == "" && item.Link != "" {
+			guid.ID = item.Link
+			guid.IsPermaLink = &trueValue
+		}
+	}
+}
+
 func (f *Feed) String() string {
 	if f == nil {
 		return fmt.Sprintf("%#v", f)
 	}
 
-	xml, err := Generate(f, false)
+	xml, err := Generate(f)
 	if err == nil {
 		return string(xml)
 	}
