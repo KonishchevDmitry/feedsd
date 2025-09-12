@@ -15,6 +15,8 @@ require (
 )
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.3 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect

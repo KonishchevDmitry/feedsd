@@ -2,6 +2,7 @@ package rss
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"time"
 )
@@ -19,14 +20,14 @@ type Feed struct {
 	Items       []*Item  `xml:"item"`
 }
 
-func NewFeed(title string, link string) *Feed {
+func NewFeed(title string, link *url.URL) *Feed {
 	return &Feed{
 		Title: title,
-		Link:  link,
+		Link:  link.String(),
 	}
 }
 
-func (f *Feed) AddItem(time time.Time, title string, link string, description string) {
+func (f *Feed) AddItem(time time.Time, title string, link *url.URL, description string) {
 	f.Items = append(f.Items, NewItem(time, title, link, description))
 }
 
@@ -99,10 +100,10 @@ type Item struct {
 	Categories   []string        `xml:"category"`
 }
 
-func NewItem(time time.Time, title string, link string, description string) *Item {
+func NewItem(time time.Time, title string, link *url.URL, description string) *Item {
 	return &Item{
 		Title:       title,
-		Link:        link,
+		Link:        link.String(),
 		Description: description,
 		Date:        Date{Time: time},
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 )
 
-// FIXME(konishchev): Implement
 func Feed(t *testing.T, generator feed.Feed, mayBeEmpty bool) {
 	t.Parallel()
 	ctx := context.Background()
@@ -21,6 +20,7 @@ func Feed(t *testing.T, generator feed.Feed, mayBeEmpty bool) {
 	}
 
 	for _, item := range feed.Items {
+		// FIXME(konishchev): Rewrite
 		require.NotEmpty(t, item.Description)
 		// require.False(t, strings.HasPrefix(item.Description, descriptionErrorMarker), item.Description)
 	}
