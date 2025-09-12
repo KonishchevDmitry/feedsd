@@ -1,11 +1,19 @@
 package query
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/KonishchevDmitry/feedsd/pkg/url"
 	"github.com/PuerkitoBio/goquery"
 )
+
+func HTMLOrError(selection *goquery.Selection) string {
+	html, err := selection.Html()
+	if err != nil {
+		html = fmt.Sprintf("[Failed to render the HTML: %s]", err)
+	}
+	return html
+}
 
 func Description(selection *goquery.Selection, baseURL *url.URL) (string, error) {
 	selection = selection.Clone()
@@ -25,7 +33,7 @@ func Description(selection *goquery.Selection, baseURL *url.URL) (string, error)
 	}
 
 	if err := ForEach(selection.Find("img"), func(image *goquery.Selection) error {
-		if src, ok := image.Attr("src"); ok && src != "" && !strings.HasPrefix(src, "data:") {
+		if src, ok := image.Attr("src"); ok && src != "" {
 			src, err := url.GetURL(baseURL, src)
 			if err != nil {
 				return err
