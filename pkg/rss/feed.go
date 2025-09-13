@@ -124,8 +124,9 @@ type Date struct {
 var NoTime time.Time
 
 type Item struct {
-	Title        string          `xml:"title,omitempty"`
-	GUID         GUID            `xml:"guid"`
+	Title string `xml:"title,omitempty"`
+	GUID  GUID   `xml:"guid"`
+	// FIXME(konishchev): To URL
 	Link         string          `xml:"link,omitempty"`
 	Description  string          `xml:"description,omitempty"`
 	Enclosure    []*Enclosure    `xml:"enclosure"`
