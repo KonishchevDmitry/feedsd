@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KonishchevDmitry/feedsd/pkg/filter"
 	"github.com/samber/mo"
 )
 
@@ -42,6 +43,17 @@ func (f *Feed) Filter(filter func(item *Item) bool) {
 	})
 }
 
+func (f *Feed) BlockCategories(blacklist filter.Blacklist) {
+	f.Filter(func(item *Item) bool {
+		for _, category := range item.Categories {
+			if blacklist.IsBlacklisted(category) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
 func (f *Feed) Deduplicate() {
 	var (
 		count int
@@ -70,17 +82,6 @@ func (f *Feed) Deduplicate() {
 	f.Items = f.Items[:count]
 	sort.Slice(f.Items, func(i, j int) bool {
 		return f.Items[i].Date.After(f.Items[j].Date.Time)
-	})
-}
-
-func (f *Feed) BlockCategories(blockList ...string) {
-	f.Filter(func(item *Item) bool {
-		for _, category := range item.Categories {
-			if slices.Contains(blockList, category) {
-				return false
-			}
-		}
-		return true
 	})
 }
 
