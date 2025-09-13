@@ -2,9 +2,14 @@ package rss
 
 import (
 	"fmt"
+	"html"
 	"net/url"
 	"slices"
+	"sort"
+	"strings"
 	"time"
+
+	"github.com/samber/mo"
 )
 
 type Feed struct {
@@ -34,6 +39,37 @@ func (f *Feed) AddItem(time time.Time, title string, link *url.URL, description 
 func (f *Feed) Filter(filter func(item *Item) bool) {
 	f.Items = slices.DeleteFunc(f.Items, func(item *Item) bool {
 		return !filter(item)
+	})
+}
+
+func (f *Feed) Deduplicate() {
+	var (
+		count int
+		ids   = make(map[string]struct{})
+	)
+
+	for _, item := range f.Items {
+		var id mo.Option[string]
+		if guid := item.GUID.ID; guid != "" {
+			id = mo.Some(guid)
+		} else if link := item.Link; link != "" {
+			id = mo.Some(link)
+		}
+
+		if id, ok := id.Get(); ok {
+			if _, ok := ids[id]; ok {
+				continue
+			}
+			ids[id] = struct{}{}
+		}
+
+		f.Items[count] = item
+		count++
+	}
+
+	f.Items = f.Items[:count]
+	sort.Slice(f.Items, func(i, j int) bool {
+		return f.Items[i].Date.After(f.Items[j].Date.Time)
 	})
 }
 
@@ -109,9 +145,16 @@ func NewItem(time time.Time, title string, link *url.URL, description string) *I
 	}
 }
 
+func (i *Item) AddCategoriesToDescription() {
+	if len(i.Categories) != 0 {
+		i.Description += fmt.Sprintf("<p>%s</p>", html.EscapeString(strings.Join(i.Categories, " | ")))
+	}
+}
+
 type GUID struct {
-	ID          string `xml:",chardata"`
-	IsPermaLink *bool  `xml:"isPermaLink,attr,omitempty"`
+	ID string `xml:",chardata"`
+	// FIXME(konishchev): To option
+	IsPermaLink *bool `xml:"isPermaLink,attr,omitempty"`
 }
 
 func MakeGUID(id string, isPermaLink bool) GUID {
