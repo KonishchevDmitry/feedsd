@@ -8,4 +8,6 @@ var (
 
 	feedStatusMetric = prometheus.NewDesc(
 		"feeds_status", "Feed generation status", []string{"name", "status"}, nil)
+
+	// FIXME(konishchev): Collection time, fetched docs
 )

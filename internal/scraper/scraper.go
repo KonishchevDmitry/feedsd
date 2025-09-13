@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"sync"
@@ -22,7 +23,7 @@ const scrapePeriod = time.Hour
 type Scraper struct {
 	feed      feed.Feed
 	stat      scrapingStat
-	started   chan struct{}
+	force     chan struct{}
 	stopped   chan struct{}
 	waitGroup sync.WaitGroup
 
@@ -38,20 +39,14 @@ func newScraper(feed feed.Feed) *Scraper {
 	return &Scraper{
 		feed:    feed,
 		stat:    stat,
-		started: make(chan struct{}, 1),
+		force:   make(chan struct{}, 1),
 		stopped: make(chan struct{}),
 	}
 }
 
 func (s *Scraper) start(ctx context.Context, develMode bool) {
-	if !develMode {
-		select {
-		case s.started <- struct{}{}:
-		default:
-		}
-	}
 	s.waitGroup.Go(func() {
-		s.daemon(ctx)
+		s.daemon(ctx, develMode)
 	})
 }
 
@@ -75,7 +70,7 @@ func (s *Scraper) Get(ctx context.Context) ScrapeResult {
 	lock.Unlock()
 
 	select {
-	case s.started <- struct{}{}:
+	case s.force <- struct{}{}:
 	default:
 	}
 
@@ -113,20 +108,29 @@ func (s *Scraper) Collect(metrics chan<- prometheus.Metric) {
 		float64(s.stat.error.Load()), s.feed.Name(), "error")
 }
 
-func (s *Scraper) daemon(ctx context.Context) {
-	select {
-	case <-s.started:
-	case <-s.stopped:
-		return
-	}
+func (s *Scraper) daemon(ctx context.Context, develMode bool) {
+	forceChan := s.force
+	infiniteChan := make(chan struct{})
 
-	// FIXME(konishchev): Random delay?
-	timer := time.NewTimer(0)
-	defer timer.Stop()
+	updateTimer := time.NewTimer(rand.N(scrapePeriod))
+	defer updateTimer.Stop()
+
+	updateChan := updateTimer.C
+	if develMode {
+		updateChan = make(chan time.Time)
+	}
 
 	for {
 		select {
-		case <-timer.C:
+		case <-updateChan:
+
+		case <-forceChan:
+			updateTimer.Stop()
+			select {
+			case <-updateTimer.C:
+			default:
+			}
+
 		case <-s.stopped:
 			return
 		}
@@ -143,7 +147,8 @@ func (s *Scraper) daemon(ctx context.Context) {
 			waiter <- result
 		}
 
-		timer.Reset(scrapePeriod)
+		updateTimer.Reset(scrapePeriod)
+		forceChan = infiniteChan
 	}
 }
 
