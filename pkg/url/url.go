@@ -8,7 +8,9 @@ import (
 
 type URL = url.URL
 
-func MustURL(value string) *url.URL {
+var Parse = url.Parse
+
+func MustParse(value string) *url.URL {
 	url, err := url.Parse(value)
 	if err != nil {
 		panic(fmt.Sprintf("Invalid URL: %s", value))
@@ -16,7 +18,7 @@ func MustURL(value string) *url.URL {
 	return url
 }
 
-func GetURL(base *url.URL, link string) (*url.URL, error) {
+func Get(base *url.URL, link string) (*url.URL, error) {
 	if strings.HasPrefix(link, "/") {
 		return base.JoinPath(link), nil
 	}

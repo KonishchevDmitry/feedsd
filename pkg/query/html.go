@@ -21,7 +21,7 @@ func Description(selection *goquery.Selection, baseURL *url.URL) (string, error)
 
 	if err := ForEach(selection.Find("a"), func(link *goquery.Selection) error {
 		if href, ok := link.Attr("href"); ok && href != "" {
-			href, err := url.GetURL(baseURL, href)
+			href, err := url.Get(baseURL, href)
 			if err != nil {
 				return err
 			}
@@ -34,7 +34,7 @@ func Description(selection *goquery.Selection, baseURL *url.URL) (string, error)
 
 	if err := ForEach(selection.Find("img"), func(image *goquery.Selection) error {
 		if src, ok := image.Attr("src"); ok && src != "" {
-			src, err := url.GetURL(baseURL, src)
+			src, err := url.Get(baseURL, src)
 			if err != nil {
 				return err
 			}
