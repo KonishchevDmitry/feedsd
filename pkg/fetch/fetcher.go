@@ -32,6 +32,7 @@ func fetch[T any](ctx context.Context, url *url.URL, allowedMediaTypes []string,
 	}
 	request.Header.Add("User-Agent", "github.com/KonishchevDmitry/feedsd")
 
+	logging.L(ctx).Debugf("Fetching %s...", url)
 	response, err := client.Do(request)
 	if err != nil {
 		return zero, makeTemporaryError(err)
