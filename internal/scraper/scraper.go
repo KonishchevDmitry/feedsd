@@ -42,6 +42,7 @@ func newScraper(feed feed.Feed, metrics observers) *Scraper {
 }
 
 func (s *Scraper) start(ctx context.Context, develMode bool) {
+	s.metrics.startTime().SetToCurrentTime()
 	s.waitGroup.Go(func() {
 		s.daemon(ctx, develMode)
 	})
@@ -136,14 +137,14 @@ func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
 
 	startTime := time.Now()
 	feed, err := s.feed.Get(ctx)
-	s.metrics.scrapeDuration.Observe(float64(time.Since(startTime)))
+	s.metrics.scrapeDuration.Observe(time.Since(startTime).Seconds())
 
 	if err == nil {
 		logging.L(ctx).Infof("%q feed scraped.", s.feed.Name())
 		feed.Normalize()
 
 		if data, err := rss.Generate(feed); err == nil {
-			s.metrics.feedTime.SetToCurrentTime()
+			s.metrics.feedTime().SetToCurrentTime()
 			s.metrics.feedStatus.WithLabelValues("success").Inc()
 			return makeScrapeResult(http.StatusOK, rss.ContentType, data)
 		} else {

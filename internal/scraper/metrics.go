@@ -5,8 +5,7 @@ import (
 )
 
 type metrics struct {
-	startTime prometheus.Gauge
-
+	startTime      *prometheus.GaugeVec
 	feedTime       *prometheus.GaugeVec
 	feedStatus     *prometheus.CounterVec
 	fetchDuration  *prometheus.HistogramVec
@@ -14,15 +13,11 @@ type metrics struct {
 }
 
 func makeMetrics() metrics {
-	startTime := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "feeds_start_time",
-		Help:        "Daemon start time",
-		ConstLabels: prometheus.Labels{},
-	})
-	startTime.SetToCurrentTime()
-
 	return metrics{
-		startTime: startTime,
+		startTime: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "feeds_start_time",
+			Help: "Scraper daemon start time",
+		}, []string{"name"}),
 
 		feedTime: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "feeds_time",
@@ -50,7 +45,8 @@ func makeMetrics() metrics {
 }
 
 type observers struct {
-	feedTime       prometheus.Gauge
+	startTime      func() prometheus.Gauge
+	feedTime       func() prometheus.Gauge
 	feedStatus     *prometheus.CounterVec
 	fetchDuration  prometheus.Observer
 	scrapeDuration prometheus.Observer
@@ -58,7 +54,12 @@ type observers struct {
 
 func (m *metrics) observers(name string) observers {
 	return observers{
-		feedTime:       m.feedTime.WithLabelValues(name),
+		startTime: func() prometheus.Gauge {
+			return m.startTime.WithLabelValues(name)
+		},
+		feedTime: func() prometheus.Gauge {
+			return m.feedTime.WithLabelValues(name)
+		},
 		feedStatus:     m.feedStatus.MustCurryWith(prometheus.Labels{"name": name}),
 		fetchDuration:  m.fetchDuration.WithLabelValues(name),
 		scrapeDuration: m.scrapeDuration.WithLabelValues(name),
