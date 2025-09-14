@@ -11,7 +11,28 @@ import (
 	"time"
 
 	logging "github.com/KonishchevDmitry/go-easy-logging"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+type fetchContext struct {
+	duration prometheus.Observer
+}
+
+type contextKey struct{}
+
+func WithContext(ctx context.Context, duration prometheus.Observer) context.Context {
+	return context.WithValue(ctx, contextKey{}, &fetchContext{
+		duration: duration,
+	})
+}
+
+func getContext(ctx context.Context) (*fetchContext, error) {
+	context, ok := ctx.Value(contextKey{}).(*fetchContext)
+	if !ok {
+		return nil, errors.New("fetch context is missing")
+	}
+	return context, nil
+}
 
 func fetch[T any](ctx context.Context, url *url.URL, allowedMediaTypes []string, parser func(body io.Reader) (T, error)) (_ T, retErr error) {
 	defer func() {
@@ -21,6 +42,11 @@ func fetch[T any](ctx context.Context, url *url.URL, allowedMediaTypes []string,
 	}()
 
 	var zero T
+
+	fetchCtx, err := getContext(ctx)
+	if err != nil {
+		return zero, err
+	}
 
 	client := http.Client{
 		Timeout: time.Minute,
@@ -33,7 +59,9 @@ func fetch[T any](ctx context.Context, url *url.URL, allowedMediaTypes []string,
 	request.Header.Add("User-Agent", "github.com/KonishchevDmitry/feedsd")
 
 	logging.L(ctx).Debugf("Fetching %s...", url)
+	startTime := time.Now()
 	response, err := client.Do(request)
+	fetchCtx.duration.Observe(time.Since(startTime).Seconds())
 	if err != nil {
 		return zero, makeTemporaryError(err)
 	}

@@ -29,7 +29,6 @@ func makeMetrics() metrics {
 			Help: "Feed generation status",
 		}, []string{"name", "status"}),
 
-		// FIXME(konishchev): Implement
 		fetchDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "feeds_fetch_duration",
 			Help:    "Document fetch duration",

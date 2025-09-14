@@ -13,6 +13,7 @@ import (
 
 	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
+	"github.com/KonishchevDmitry/feedsd/pkg/fetch"
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
@@ -133,6 +134,8 @@ func (s *Scraper) daemon(ctx context.Context, develMode bool) {
 }
 
 func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
+	ctx = fetch.WithContext(ctx, s.metrics.fetchDuration)
+
 	logging.L(ctx).Infof("Scraping %q feed...", s.feed.Name())
 
 	startTime := time.Now()
