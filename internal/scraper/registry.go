@@ -5,53 +5,46 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 )
 
-var Registry = make(ScraperRegistry)
+type Registry struct {
+	scrapers map[string]*Scraper
+	metrics
+}
 
-type ScraperRegistry map[string]*Scraper //nolint: revive
+func NewRegistry() *Registry {
+	return &Registry{
+		scrapers: make(map[string]*Scraper),
+		metrics:  makeMetrics(),
+	}
+}
 
-func (r ScraperRegistry) Add(feed feed.Feed) (*Scraper, error) {
+func (r *Registry) Add(feed feed.Feed) (*Scraper, error) {
 	name := feed.Name()
-	if _, ok := r[name]; ok {
+	if _, ok := r.scrapers[name]; ok {
 		return nil, fmt.Errorf("%q feed is already registered", name)
 	}
 
-	scraper := newScraper(feed)
-	r[name] = scraper
+	scraper := newScraper(feed, r.metrics.observers(name))
+	r.scrapers[name] = scraper
 
 	return scraper, nil
 }
 
-func (r ScraperRegistry) Start(ctx context.Context, develMode bool) {
-	for _, scraper := range r {
+func (r *Registry) Start(ctx context.Context, develMode bool) {
+	for _, scraper := range r.scrapers {
 		scraper.start(ctx, develMode)
 	}
 }
 
-func (r ScraperRegistry) Stop(ctx context.Context) {
+func (r *Registry) Stop(ctx context.Context) {
 	var waitGroup sync.WaitGroup
 	defer waitGroup.Wait()
 
-	for _, scraper := range r {
+	for _, scraper := range r.scrapers {
 		waitGroup.Go(func() {
 			scraper.stop(ctx)
 		})
-	}
-}
-
-var _ prometheus.Collector = ScraperRegistry{}
-
-func (r ScraperRegistry) Describe(descs chan<- *prometheus.Desc) {
-	descs <- feedAgeMetric
-	descs <- feedStatusMetric
-}
-
-func (r ScraperRegistry) Collect(metrics chan<- prometheus.Metric) {
-	for _, scraper := range r {
-		scraper.Collect(metrics)
 	}
 }

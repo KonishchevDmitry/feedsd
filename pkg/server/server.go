@@ -16,24 +16,48 @@ import (
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 )
 
-var feedsMux = http.NewServeMux()
-
-func init() {
-	register("/", http.NotFound)
+type Server struct {
+	scrapers *scraper.Registry
+	feedsMux *http.ServeMux
 }
 
-func Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode bool) error {
+func New() *Server {
+	s := &Server{
+		scrapers: scraper.NewRegistry(),
+		feedsMux: http.NewServeMux(),
+	}
+	s.register("/", http.NotFound)
+	return s
+}
+
+func (s *Server) Register(feed feed.Feed) error {
+	scraper, err := s.scrapers.Add(feed)
+	if err != nil {
+		return err
+	}
+
+	s.register(fmt.Sprintf("/%s.rss", feed.Name()), func(w http.ResponseWriter, r *http.Request) {
+		response := scraper.Get(r.Context())
+		w.Header().Set("Content-Type", response.ContentType)
+		w.WriteHeader(response.HTTPStatus)
+		_, _ = w.Write(response.Data)
+	})
+
+	return nil
+}
+
+func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode bool) error {
 	var waitGroup sync.WaitGroup
 	defer waitGroup.Wait()
 
-	if err := prometheus.DefaultRegisterer.Register(scraper.Registry); err != nil {
+	if err := prometheus.DefaultRegisterer.Register(s.scrapers); err != nil {
 		return err
 	}
 
 	//nolint:gosec
 	feedsServer := http.Server{
 		Addr:     feedsAddr,
-		Handler:  feedsMux,
+		Handler:  s.feedsMux,
 		ErrorLog: log.New(newHTTPLogger(logging.L(ctx)), "Feeds HTTP server: ", 0),
 		BaseContext: func(net.Listener) context.Context {
 			return ctx
@@ -106,28 +130,14 @@ func Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode 
 		}
 	})
 
-	scraper.Registry.Start(ctx, develMode)
-	defer scraper.Registry.Stop(ctx)
+	s.scrapers.Start(ctx, develMode)
+	defer s.scrapers.Stop(ctx)
 
 	return <-serverCrashed
 }
 
-func Register(feed feed.Feed) {
-	scraper, err := scraper.Registry.Add(feed)
-	if err != nil {
-		panic(err)
-	}
-
-	register(fmt.Sprintf("/%s.rss", feed.Name()), func(w http.ResponseWriter, r *http.Request) {
-		response := scraper.Get(r.Context())
-		w.Header().Set("Content-Type", response.ContentType)
-		w.WriteHeader(response.HTTPStatus)
-		_, _ = w.Write(response.Data)
-	})
-}
-
-func register(path string, handler func(http.ResponseWriter, *http.Request)) {
-	feedsMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+func (s *Server) register(path string, handler func(http.ResponseWriter, *http.Request)) {
+	s.feedsMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logging.L(ctx).Debugf("%s %s...", r.Method, r.RequestURI)
 		handler(w, r)

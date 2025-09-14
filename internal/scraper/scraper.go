@@ -9,9 +9,7 @@ import (
 	"time"
 
 	logging "github.com/KonishchevDmitry/go-easy-logging"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/mo"
-	"go.uber.org/atomic"
 
 	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
@@ -21,8 +19,9 @@ import (
 const scrapePeriod = time.Hour
 
 type Scraper struct {
-	feed      feed.Feed
-	stat      scrapingStat
+	feed    feed.Feed
+	metrics observers
+
 	force     chan struct{}
 	stopped   chan struct{}
 	waitGroup sync.WaitGroup
@@ -32,13 +31,11 @@ type Scraper struct {
 	waiters []chan<- ScrapeResult
 }
 
-func newScraper(feed feed.Feed) *Scraper {
-	var stat scrapingStat
-	stat.feedTime.Store(time.Now())
-
+func newScraper(feed feed.Feed, metrics observers) *Scraper {
 	return &Scraper{
 		feed:    feed,
-		stat:    stat,
+		metrics: metrics,
+
 		force:   make(chan struct{}, 1),
 		stopped: make(chan struct{}),
 	}
@@ -90,24 +87,6 @@ func (s *Scraper) Get(ctx context.Context) ScrapeResult {
 	}
 }
 
-func (s *Scraper) Collect(metrics chan<- prometheus.Metric) {
-	metrics <- prometheus.MustNewConstMetric(
-		feedAgeMetric, prometheus.GaugeValue,
-		time.Since(s.stat.feedTime.Load()).Seconds(), s.feed.Name())
-
-	metrics <- prometheus.MustNewConstMetric(
-		feedStatusMetric, prometheus.CounterValue,
-		float64(s.stat.success.Load()), s.feed.Name(), "success")
-
-	metrics <- prometheus.MustNewConstMetric(
-		feedStatusMetric, prometheus.CounterValue,
-		float64(s.stat.unavailable.Load()), s.feed.Name(), "unavailable")
-
-	metrics <- prometheus.MustNewConstMetric(
-		feedStatusMetric, prometheus.CounterValue,
-		float64(s.stat.error.Load()), s.feed.Name(), "error")
-}
-
 func (s *Scraper) daemon(ctx context.Context, develMode bool) {
 	forceChan := s.force
 	infiniteChan := make(chan struct{})
@@ -155,26 +134,30 @@ func (s *Scraper) daemon(ctx context.Context, develMode bool) {
 func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
 	logging.L(ctx).Infof("Scraping %q feed...", s.feed.Name())
 
-	if feed, err := s.feed.Get(ctx); err == nil {
+	startTime := time.Now()
+	feed, err := s.feed.Get(ctx)
+	s.metrics.scrapeDuration.Observe(float64(time.Since(startTime)))
+
+	if err == nil {
 		logging.L(ctx).Infof("%q feed scraped.", s.feed.Name())
 		feed.Normalize()
 
 		if data, err := rss.Generate(feed); err == nil {
-			s.stat.feedTime.Store(time.Now())
-			s.stat.success.Inc()
+			s.metrics.feedTime.SetToCurrentTime()
+			s.metrics.feedStatus.WithLabelValues("success").Inc()
 			return makeScrapeResult(http.StatusOK, rss.ContentType, data)
 		} else {
 			logging.L(ctx).Errorf("Failed to render %s RSS feed: %s.", s.feed.Name(), err)
-			s.stat.error.Inc()
+			s.metrics.feedStatus.WithLabelValues("error").Inc()
 			return makeErrorResult(http.StatusInternalServerError)
 		}
 	} else if util.IsTemporaryError(err) {
 		logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
-		s.stat.unavailable.Inc()
+		s.metrics.feedStatus.WithLabelValues("unavailable").Inc()
 		return makeErrorResult(http.StatusGatewayTimeout)
 	} else {
 		logging.L(ctx).Errorf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
-		s.stat.error.Inc()
+		s.metrics.feedStatus.WithLabelValues("error").Inc()
 		return makeErrorResult(http.StatusBadGateway)
 	}
 }
@@ -195,11 +178,4 @@ func makeScrapeResult(status int, contentType string, data []byte) ScrapeResult 
 
 func makeErrorResult(status int) ScrapeResult {
 	return makeScrapeResult(status, "text/plain", []byte("Failed to generate the RSS feed"))
-}
-
-type scrapingStat struct {
-	feedTime    atomic.Time
-	success     atomic.Int64
-	unavailable atomic.Int64
-	error       atomic.Int64
 }
