@@ -6,16 +6,15 @@ tool github.com/daixiang0/gci
 
 require (
 	github.com/KonishchevDmitry/go-easy-logging v0.0.0-20230419175548-32cfd9299051
+	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/samber/mo v1.15.0
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/atomic v1.11.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.44.0
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.10.3 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

@@ -1,13 +1,11 @@
 package query
 
 import (
-	"strings"
-
 	"github.com/PuerkitoBio/goquery"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/parse"
 )
 
-// FIXME(konishchev): Implement
 func Text(selection *goquery.Selection) string {
-	return strings.TrimSpace(selection.Text())
-	// return TrimText(selection.Text())
+	return parse.TrimText(selection.Text())
 }

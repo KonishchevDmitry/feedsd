@@ -9,9 +9,6 @@ import (
 var russianDateRegex = regexp.MustCompile(`^(\d{1,2}) ([а-я]+\.?) (\d{4})$`)
 
 func Date(value string) (time.Time, error) {
-	// FIXME(konishchev): Support?
-	// value = TrimText(value)
-
 	matches := russianDateRegex.FindStringSubmatch(value)
 	if len(matches) == 0 {
 		return time.Time{}, fmt.Errorf("invalid date: %q", value)

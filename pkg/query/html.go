@@ -3,8 +3,9 @@ package query
 import (
 	"fmt"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/url"
 	"github.com/PuerkitoBio/goquery"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/url"
 )
 
 func HTMLOrError(selection *goquery.Selection) string {

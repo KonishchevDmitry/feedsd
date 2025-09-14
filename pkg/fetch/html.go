@@ -9,12 +9,13 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/query"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/samber/mo"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/query"
 )
 
 func HTML(ctx context.Context, url *url.URL) (*goquery.Document, error) {

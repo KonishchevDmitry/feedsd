@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/filter"
 	"github.com/samber/mo"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/filter"
 )
 
 type Feed struct {
@@ -124,9 +125,8 @@ type Date struct {
 var NoTime time.Time
 
 type Item struct {
-	Title string `xml:"title,omitempty"`
-	GUID  GUID   `xml:"guid"`
-	// FIXME(konishchev): To URL
+	Title        string          `xml:"title,omitempty"`
+	GUID         GUID            `xml:"guid"`
 	Link         string          `xml:"link,omitempty"`
 	Description  string          `xml:"description,omitempty"`
 	Enclosure    []*Enclosure    `xml:"enclosure"`
@@ -154,9 +154,8 @@ func (i *Item) AddCategoriesToDescription() {
 }
 
 type GUID struct {
-	ID string `xml:",chardata"`
-	// FIXME(konishchev): To option
-	IsPermaLink *bool `xml:"isPermaLink,attr,omitempty"`
+	ID          string `xml:",chardata"`
+	IsPermaLink *bool  `xml:"isPermaLink,attr,omitempty"`
 }
 
 func MakeGUID(id string, isPermaLink bool) GUID {

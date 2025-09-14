@@ -25,7 +25,7 @@ func makeMetrics() metrics {
 		}, []string{"name"}),
 
 		feedStatus: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "feeds_status",
+			Name: "feeds_status_total",
 			Help: "Feed generation status",
 		}, []string{"name", "status"}),
 

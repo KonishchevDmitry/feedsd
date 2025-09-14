@@ -142,28 +142,31 @@ func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
 	feed, err := s.feed.Get(ctx)
 	s.metrics.scrapeDuration.Observe(time.Since(startTime).Seconds())
 
-	if err == nil {
-		logging.L(ctx).Infof("%q feed scraped.", s.feed.Name())
-		feed.Normalize()
-
-		if data, err := rss.Generate(feed); err == nil {
-			s.metrics.feedTime().SetToCurrentTime()
-			s.metrics.feedStatus.WithLabelValues("success").Inc()
-			return makeScrapeResult(http.StatusOK, rss.ContentType, data)
-		} else {
-			logging.L(ctx).Errorf("Failed to render %s RSS feed: %s.", s.feed.Name(), err)
-			s.metrics.feedStatus.WithLabelValues("error").Inc()
-			return makeErrorResult(http.StatusInternalServerError)
+	if err != nil {
+		if util.IsTemporaryError(err) {
+			logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
+			s.metrics.feedStatus.WithLabelValues("unavailable").Inc()
+			return makeErrorResult(http.StatusGatewayTimeout)
 		}
-	} else if util.IsTemporaryError(err) {
-		logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
-		s.metrics.feedStatus.WithLabelValues("unavailable").Inc()
-		return makeErrorResult(http.StatusGatewayTimeout)
-	} else {
+
 		logging.L(ctx).Errorf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
 		s.metrics.feedStatus.WithLabelValues("error").Inc()
 		return makeErrorResult(http.StatusBadGateway)
 	}
+
+	logging.L(ctx).Infof("%q feed scraped.", s.feed.Name())
+	feed.Normalize()
+
+	data, err := rss.Generate(feed)
+	if err != nil {
+		logging.L(ctx).Errorf("Failed to render %s RSS feed: %s.", s.feed.Name(), err)
+		s.metrics.feedStatus.WithLabelValues("error").Inc()
+		return makeErrorResult(http.StatusInternalServerError)
+	}
+
+	s.metrics.feedTime().SetToCurrentTime()
+	s.metrics.feedStatus.WithLabelValues("success").Inc()
+	return makeScrapeResult(http.StatusOK, rss.ContentType, data)
 }
 
 type ScrapeResult struct {
