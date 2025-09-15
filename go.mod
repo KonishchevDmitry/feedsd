@@ -7,6 +7,7 @@ tool github.com/daixiang0/gci
 require (
 	github.com/KonishchevDmitry/go-easy-logging v0.0.0-20230419175548-32cfd9299051
 	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/go-pkgz/expirable-cache/v3 v3.1.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/samber/mo v1.15.0
 	github.com/stretchr/testify v1.11.1
