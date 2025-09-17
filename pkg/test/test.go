@@ -9,17 +9,20 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 	"github.com/KonishchevDmitry/feedsd/pkg/fetch"
 )
 
+func Context(t *testing.T) context.Context {
+	return logging.WithLogger(context.Background(), zaptest.NewLogger(t).Sugar())
+}
+
 func Feed(t *testing.T, generator feed.Feed, mayBeEmpty bool) {
 	t.Parallel()
 
-	ctx := context.Background()
-	ctx = logging.WithLogger(ctx, zap.NewNop().Sugar())
+	ctx := Context(t)
 	ctx = fetch.WithContext(ctx, prometheus.NewHistogram(prometheus.HistogramOpts{}))
 
 	feed, err := generator.Get(ctx)
