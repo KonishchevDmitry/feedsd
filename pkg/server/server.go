@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -118,14 +119,14 @@ func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string
 
 	closeFeedsSocket = false
 	waitGroup.Go(func() {
-		if err := feedsServer.Serve(feedsSocket); err != nil {
+		if err := feedsServer.Serve(feedsSocket); !errors.Is(err, http.ErrServerClosed) {
 			serverCrashed <- fmt.Errorf("feeds HTTP server has crashed: %w", err)
 		}
 	})
 
 	closeMetricsSocket = false
 	waitGroup.Go(func() {
-		if err := metricsServer.Serve(metricsSocket); err != nil {
+		if err := metricsServer.Serve(metricsSocket); !errors.Is(err, http.ErrServerClosed) {
 			serverCrashed <- fmt.Errorf("metrics HTTP server has crashed: %w", err)
 		}
 	})
