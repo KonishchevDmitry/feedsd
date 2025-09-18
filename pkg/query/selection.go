@@ -6,6 +6,19 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+func Optional(selection *goquery.Selection, name string, selector string) (*goquery.Selection, bool, error) {
+	selection = selection.Find(selector)
+
+	switch size := selection.Size(); size {
+	case 0:
+		return nil, false, nil
+	case 1:
+		return selection, true, nil
+	default:
+		return nil, false, fmt.Errorf("unable to find %s: got %d elements that match %q selector", name, size, selector)
+	}
+}
+
 func One(selection *goquery.Selection, name string, selector string) (*goquery.Selection, error) {
 	selection = selection.Find(selector)
 
