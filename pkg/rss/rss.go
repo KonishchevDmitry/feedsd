@@ -16,6 +16,7 @@ func Read(reader io.Reader) (*Feed, error) {
 	rss := rssRoot{}
 
 	decoder := xml.NewDecoder(reader)
+	decoder.Strict = false
 	decoder.CharsetReader = charset.NewReaderLabel
 
 	if err := decoder.Decode(&rss); err != nil {
