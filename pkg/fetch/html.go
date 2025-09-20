@@ -18,7 +18,7 @@ import (
 	"github.com/KonishchevDmitry/feedsd/pkg/query"
 )
 
-func HTML(ctx context.Context, url *url.URL) (*goquery.Document, error) {
+func HTML(ctx context.Context, url *url.URL, options ...Option) (*goquery.Document, error) {
 	return fetch(ctx, url, []string{"text/html"}, func(body io.Reader) (*goquery.Document, error) {
 		data, err := io.ReadAll(body)
 		if err != nil {
@@ -48,15 +48,15 @@ func HTML(ctx context.Context, url *url.URL) (*goquery.Document, error) {
 		}
 
 		return goquery.NewDocumentFromNode(doc), nil
-	})
+	}, options...)
 }
 
 func Description(
-	ctx context.Context, url *url.URL, baseURL *url.URL,
-	parser func(doc *goquery.Document) (*goquery.Selection, error),
+	ctx context.Context, url *url.URL, baseURL *url.URL, parser func(doc *goquery.Document) (*goquery.Selection, error),
+	options ...Option,
 ) (string, error) {
 	selection, err := func() (*goquery.Selection, error) {
-		doc, err := HTML(ctx, url)
+		doc, err := HTML(ctx, url, options...)
 		if err != nil {
 			return nil, err
 		}

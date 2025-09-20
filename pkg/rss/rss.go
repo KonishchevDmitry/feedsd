@@ -12,6 +12,8 @@ import (
 
 const ContentType = "application/rss+xml"
 
+var PossibleContentTypes = []string{ContentType, "application/xml", "text/xml"}
+
 func Read(reader io.Reader) (*Feed, error) {
 	rss := rssRoot{}
 

@@ -7,10 +7,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/KonishchevDmitry/feedsd/internal/util"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/chromedp/chromedp"
 )
@@ -18,9 +20,12 @@ import (
 func Configure(ctx context.Context) (_ context.Context, _ func(), retErr error) {
 	logging.L(ctx).Debugf("Configuring the browser...")
 
-	browserCtx, stop := configure(ctx)
+	browserCtx, stop, err := configure(ctx)
+	if err != nil {
+		return ctx, nil, err
+	}
 	defer func() {
-		if retErr != nil {
+		if retErr != nil && stop != nil {
 			stop()
 		}
 	}()
@@ -39,7 +44,10 @@ func Configure(ctx context.Context) (_ context.Context, _ func(), retErr error) 
 		logging.L(ctx).Debugf("Changing browser User-Agent to %q...", requiredUserAgent)
 
 		stop()
-		browserCtx, stop = configure(ctx, chromedp.UserAgent(requiredUserAgent))
+		browserCtx, stop, err = configure(ctx, chromedp.UserAgent(requiredUserAgent))
+		if err != nil {
+			return ctx, nil, err
+		}
 
 		actualUserAgent, err = getUserAgent(browserCtx)
 		if err != nil {
@@ -60,7 +68,7 @@ func Configure(ctx context.Context) (_ context.Context, _ func(), retErr error) 
 
 type Response struct {
 	URL         string
-	Status      int
+	StatusCode  int
 	StatusText  string
 	ContentType string
 	Text        string
@@ -91,7 +99,7 @@ func Get(ctx context.Context, url *url.URL) (*Response, error) {
 
 	return &Response{
 		URL:         response.URL,
-		Status:      int(response.Status),
+		StatusCode:  int(response.Status),
 		StatusText:  response.StatusText,
 		ContentType: contentType,
 		Text:        text,
@@ -99,32 +107,58 @@ func Get(ctx context.Context, url *url.URL) (*Response, error) {
 	}, nil
 }
 
-func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ context.Context, _ func()) {
-	ctx, cancelAllocator := chromedp.NewExecAllocator(ctx, slices.Concat(
-		chromedp.DefaultExecAllocatorOptions[:],
-		options,
-	)...)
+func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ context.Context, _ func(), retErr error) {
+	var closers []func()
+	stop := func() {
+		logging.L(ctx).Debugf("Stopping the browser...")
+
+		// It would be better to gracefully stop the browser first via chromedp.Cancel(), but it's buggy and
+		// cancelContext() panics after chromedp.Cancel() in case when browser has failed to start.
+
+		for _, close := range slices.Backward(closers) {
+			close()
+		}
+	}
+	defer func() {
+		if retErr != nil {
+			stop()
+		}
+	}()
+
+	dataDir, err := os.MkdirTemp("/var/tmp", "feedsd-browser-*")
+	if err != nil {
+		return ctx, nil, err
+	}
+	closers = append(closers, func() {
+		// FIXME(konishchev): Failed to delete browser data directory "/var/tmp/feedsd-browser-3627646949": unlinkat /var/tmp/feedsd-browser-3627646949/Default: directory not empty
+		if err := os.RemoveAll(dataDir); err != nil {
+			logging.L(ctx).Errorf("Failed to delete browser data directory %q: %s", dataDir, err)
+		}
+	})
+
+	allocatorOptions := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
+	allocatorOptions = append(allocatorOptions, chromedp.UserDataDir(dataDir))
+	if util.IsContainer() {
+		allocatorOptions = append(allocatorOptions,
+			chromedp.NoSandbox,
+			chromedp.Flag("use-gl", "angle"),
+			chromedp.Flag("use-angle", "swiftshader"))
+	}
+	allocatorOptions = append(allocatorOptions, options...)
+
+	ctx, cancelAllocator := chromedp.NewExecAllocator(ctx, allocatorOptions...)
+	closers = append(closers, cancelAllocator)
 
 	ctx, cancelContext := chromedp.NewContext(ctx, chromedp.WithLogf(func(format string, args ...any) {
 		logging.L(ctx).Debugf("Browser: "+format, args...)
 	}))
+	closers = append(closers, cancelContext)
 
-	return ctx, func() {
-		logging.L(ctx).Debugf("Stopping the browser...")
-
-		if err := chromedp.Cancel(ctx); err != nil {
-			logging.L(ctx).Errorf("Failed to stop the browser: %s.", err)
-		} else {
-			logging.L(ctx).Debugf("The browser has stopped.")
-		}
-
-		cancelContext()
-		cancelAllocator()
-	}
+	return ctx, stop, nil
 }
 
 var userAgentRe = regexp.MustCompile(
-	`^(Mozilla/[^ ]+ \(Macintosh; [^)]+\) AppleWebKit/[^ ]+ \(KHTML, like Gecko\) )([^ ]+)(/[^ ]+ Safari/[^ ]+)$`)
+	`^(Mozilla/[^ ]+ \([^)]+\) AppleWebKit/[^ ]+ \(KHTML, like Gecko\) )([^ ]+)(/[^ ]+ Safari/[^ ]+)$`)
 
 func getUserAgent(ctx context.Context) (_ string, retErr error) {
 	var serverChan chan error
@@ -168,10 +202,10 @@ func getUserAgent(ctx context.Context) (_ string, retErr error) {
 	response, err := Get(ctx, &url)
 	if err != nil {
 		return "", err
-	} else if response.Status != http.StatusOK {
+	} else if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf(
 			"failed to check browser User-Agent: the server returned %d %s",
-			response.Status, response.StatusText)
+			response.StatusCode, response.StatusText)
 	}
 
 	return response.Text, nil
