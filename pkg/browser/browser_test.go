@@ -3,9 +3,11 @@ package browser
 import (
 	"context"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -20,67 +22,82 @@ import (
 func TestGet(t *testing.T) {
 	t.Parallel()
 
-	type testCase struct {
+	// FIXME(konishchev): Add JS test
+	testCases := []struct {
 		name        string
 		status      int
 		contentType string
 		body        string
-		text        string
-		html        string
-	}
-
-	// FIXME(konishchev): Add JS test
-	testCases := []testCase{{
+		result      string
+	}{{
 		name:        "text",
 		status:      http.StatusOK,
 		contentType: "text/plain",
 		body:        "Some & text",
-		text:        "Some & text",
+		result:      "Some & text",
 	}, {
 		name:        "error",
 		status:      http.StatusInternalServerError,
 		contentType: "text/html",
 		body:        "Some error",
-		text:        "Some error",
-		html:        "<html><head></head><body>Some error</body></html>",
+		result:      "<html><head></head><body>Some error</body></html>",
 	}, {
 		name:        "html",
 		status:      http.StatusOK,
 		contentType: "text/html",
 		body:        "<html><body>Some text</body></html>",
-		text:        "Some text",
-		html:        "<html><head></head><body>Some text</body></html>",
+		result:      "<html><head></head><body>Some text</body></html>",
+	}, {
+		name:        "rss",
+		status:      http.StatusOK,
+		contentType: rss.ContentType,
+		body: heredoc.Doc(`
+			<?xml version="1.0" encoding="UTF-8"?>
+			<rss version="2.0">
+				<channel>
+					<title>Feed title</title>
+					<link>http://example.com/</link>
+					<description>Feed description</description>
+				</channel>
+			</rss>
+		`),
+		result: heredoc.Doc(`
+			<?xml version="1.0" encoding="UTF-8"?>
+			<rss version="2.0">
+				<channel>
+					<title>Feed title</title>
+					<link>http://example.com/</link>
+					<description>Feed description</description>
+				</channel>
+			</rss>
+		`),
+	}, {
+		name:        "xml",
+		status:      http.StatusOK,
+		contentType: "text/xml",
+		body: heredoc.Doc(`
+			<?xml version="1.0" encoding="UTF-8"?>
+			<rss version="2.0">
+				<channel>
+					<title>Feed title</title>
+					<link>http://example.com/</link>
+					<description>Feed description</description>
+				</channel>
+			</rss>
+		`),
+		// For text/xml Content-Type Chrome:
+		// * Cuts `<?xml ...?>`
+		// * Prepends the output with the following text: "This XML file does not appear to have any style information associated with it. The document tree is shown below."
+		result: heredoc.Doc(`
+			<rss version="2.0">
+				<channel>
+					<title>Feed title</title>
+					<link>http://example.com/</link>
+					<description>Feed description</description>
+				</channel>
+			</rss>
+		`),
 	}}
-
-	// Depending on content type Chrome may prepend the output with the following text:
-	// "This XML file does not appear to have any style information associated with it. The document tree is shown below."
-	for _, contentType := range rss.PossibleContentTypes {
-		testCases = append(testCases, testCase{
-			name:        contentType,
-			status:      http.StatusOK,
-			contentType: contentType,
-			body: heredoc.Doc(`
-				<?xml version="1.0" encoding="UTF-8"?>
-				<rss version="2.0">
-					<channel>
-						<title>Feed title</title>
-						<link>http://example.com/</link>
-						<description>Feed description</description>
-					</channel>
-				</rss>
-			`),
-			text: heredoc.Doc(`
-				<?xml version="1.0" encoding="UTF-8"?>
-				<rss version="2.0">
-					<channel>
-						<title>Feed title</title>
-						<link>http://example.com/</link>
-						<description>Feed description</description>
-					</channel>
-				</rss>
-			`),
-		})
-	}
 
 	ctx, stop, err := Configure(testutil.Context(t))
 	require.NoError(t, err)
@@ -108,14 +125,20 @@ func TestGet(t *testing.T) {
 			response, err := Get(ctx, url.MustParse(server.URL))
 			require.NoError(t, err)
 
+			mediaType, _, err := mime.ParseMediaType(testCase.contentType)
+			require.NoError(t, err)
+
+			body, expected := response.Body, testCase.result
+			if mediaType != "text/plain" {
+				indentationRe := regexp.MustCompile(`(?m:^\s+|\s+$)`)
+				body = indentationRe.ReplaceAllString(body, "")
+				expected = indentationRe.ReplaceAllString(expected, "")
+			}
+
 			require.Equal(t, server.URL+"/", response.URL)
 			require.Equal(t, testCase.status, response.StatusCode)
 			require.Equal(t, testCase.contentType, response.ContentType)
-			require.Equal(t, testCase.text, response.Text)
-
-			if len(testCase.html) != 0 {
-				require.Equal(t, testCase.html, response.HTML)
-			}
+			require.Equal(t, expected, body)
 		})
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,8 +12,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/KonishchevDmitry/feedsd/internal/util"
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/chromedp/chromedp"
 )
@@ -71,16 +74,15 @@ type Response struct {
 	StatusCode  int
 	StatusText  string
 	ContentType string
-	Text        string
-	HTML        string
+	Body        string
 }
 
 func Get(ctx context.Context, url *url.URL) (*Response, error) {
-	var text, html string
+	var body, html string
 	response, err := chromedp.RunResponse(ctx,
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
-		chromedp.Evaluate("document.body.innerText", &text),
+		chromedp.Evaluate("document.body.innerText", &body),
 		chromedp.OuterHTML("html", &html),
 	)
 	if err != nil {
@@ -96,14 +98,30 @@ func Get(ctx context.Context, url *url.URL) (*Response, error) {
 			}
 		}
 	}
+	if contentType == "" {
+		return nil, errors.New("the server returned a response without Content-Type")
+	}
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, fmt.Errorf("the server returned an invalid Content-Type: %q", contentType)
+	}
+
+	if mediaType == "text/html" {
+		body = html
+	} else if slices.Contains(rss.PossibleContentTypes, contentType) {
+		prefix := "This XML file does not appear to have any style information associated with it. The document tree is shown below."
+		if trimmed := strings.TrimLeftFunc(body, unicode.IsSpace); strings.HasPrefix(trimmed, prefix) {
+			body = strings.TrimLeftFunc(trimmed[len(prefix):], unicode.IsSpace)
+		}
+	}
 
 	return &Response{
 		URL:         response.URL,
 		StatusCode:  int(response.Status),
 		StatusText:  response.StatusText,
 		ContentType: contentType,
-		Text:        text,
-		HTML:        html,
+		Body:        body,
 	}, nil
 }
 
@@ -208,5 +226,5 @@ func getUserAgent(ctx context.Context) (_ string, retErr error) {
 			response.StatusCode, response.StatusText)
 	}
 
-	return response.Text, nil
+	return response.Body, nil
 }

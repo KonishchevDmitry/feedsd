@@ -115,17 +115,11 @@ func browserFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 		return nil, makeTemporaryError(err)
 	}
 
-	// FIXME(konishchev): Move this logic to browser?
-	body := response.Text
-	if mediaType, _, _ := mime.ParseMediaType(response.ContentType); mediaType == "text/html" {
-		body = response.HTML
-	}
-
 	return &fetchResult{
 		StatusCode:  response.StatusCode,
 		StatusText:  response.StatusText,
 		ContentType: response.ContentType,
-		Body:        io.NopCloser(strings.NewReader(body)),
+		Body:        io.NopCloser(strings.NewReader(response.Body)),
 	}, nil
 }
 
