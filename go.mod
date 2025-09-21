@@ -16,6 +16,7 @@ require (
 )
 
 require (
+	al.essio.dev/pkg/shellescape v1.6.0 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

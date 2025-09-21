@@ -9,21 +9,28 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
 	"unicode"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/chromedp/chromedp"
 )
 
-func Configure(ctx context.Context) (_ context.Context, _ func(), retErr error) {
+func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func(), retErr error) {
 	logging.L(ctx).Debugf("Configuring the browser...")
 
-	browserCtx, stop, err := configure(ctx)
+	var options options
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	browserCtx, stop, err := configure(ctx, options)
 	if err != nil {
 		return ctx, nil, err
 	}
@@ -47,7 +54,7 @@ func Configure(ctx context.Context) (_ context.Context, _ func(), retErr error) 
 		logging.L(ctx).Debugf("Changing browser User-Agent to %q...", requiredUserAgent)
 
 		stop()
-		browserCtx, stop, err = configure(ctx, chromedp.UserAgent(requiredUserAgent))
+		browserCtx, stop, err = configure(ctx, options, chromedp.UserAgent(requiredUserAgent))
 		if err != nil {
 			return ctx, nil, err
 		}
@@ -126,7 +133,7 @@ func Get(ctx context.Context, url *url.URL) (*Response, error) {
 	}, nil
 }
 
-func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ context.Context, _ func(), retErr error) {
+func configure(ctx context.Context, options options, execOptions ...chromedp.ExecAllocatorOption) (_ context.Context, _ func(), retErr error) {
 	var closers []func()
 	stop := func() {
 		logging.L(ctx).Debugf("Stopping the browser...")
@@ -138,6 +145,8 @@ func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ 
 		for _, close := range slices.Backward(closers) {
 			close()
 		}
+
+		logging.L(ctx).Debugf("The browser has stopped.")
 	}
 	defer func() {
 		if retErr != nil {
@@ -145,38 +154,86 @@ func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ 
 		}
 	}()
 
-	dataDir, err := os.MkdirTemp("/var/tmp", "feedsd-browser-*")
-	if err != nil {
-		return ctx, nil, err
-	}
-	closers = append(closers, func() {
-		// FIXME(konishchev): Failed to delete browser data directory "/var/tmp/feedsd-browser-3627646949": unlinkat /var/tmp/feedsd-browser-3627646949/Default: directory not empty
-		if err := os.RemoveAll(dataDir); err != nil {
-			logging.L(ctx).Errorf("Failed to delete browser data directory %q: %s", dataDir, err)
+	var (
+		allocatorContext context.Context
+		cancelAllocator  func()
+	)
+
+	if remote, ok := options.remote.Get(); ok {
+		allocatorContext, cancelAllocator = chromedp.NewRemoteAllocator(ctx, remote)
+		closers = append(closers, cancelAllocator)
+	} else {
+		dataDir, err := os.MkdirTemp("/var/tmp", "feedsd-browser-*")
+		if err != nil {
+			return ctx, nil, err
 		}
-	})
+		closers = append(closers, func() {
+			// FIXME(konishchev): Failed to delete browser data directory "/var/tmp/feedsd-browser-3627646949": unlinkat /var/tmp/feedsd-browser-3627646949/Default: directory not empty
+			if err := os.RemoveAll(dataDir); err != nil {
+				logging.L(ctx).Errorf("Failed to delete browser data directory %q: %s", dataDir, err)
+			}
+		})
 
-	allocatorOptions := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
-	allocatorOptions = append(allocatorOptions,
-		chromedp.UserDataDir(dataDir),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"))
-	if util.IsContainer() {
+		// FIXME(konishchev): Rewrite it
+		allocatorOptions := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
+		// allocatorOptions := []chromedp.ExecAllocatorOption{
+		// 	chromedp.NoFirstRun,
+		// 	chromedp.NoDefaultBrowserCheck,
+
+		// 	// chromedp.Headless,
+		// 	chromedp.Flag("headless", true),
+		// 	// chromedp.Flag("hide-scrollbars", true),
+		// 	// chromedp.Flag("mute-audio", true),
+
+		// 	// After Puppeteer's default behavior.
+		// 	// chromedp.Flag("disable-background-networking", true),
+		// 	// chromedp.Flag("enable-features", "NetworkService,NetworkServiceInProcess"),
+		// 	// chromedp.Flag("disable-background-timer-throttling", true),
+		// 	// chromedp.Flag("disable-backgrounding-occluded-windows", true),
+		// 	// chromedp.Flag("disable-breakpad", true),
+		// 	// chromedp.Flag("disable-client-side-phishing-detection", true),
+		// 	// chromedp.Flag("disable-default-apps", true),
+		// 	// chromedp.Flag("disable-dev-shm-usage", true),
+		// 	// chromedp.Flag("disable-extensions", true),
+		// 	// chromedp.Flag("disable-features", "site-per-process,Translate,BlinkGenPropertyTrees"),
+		// 	// chromedp.Flag("disable-hang-monitor", true),
+		// 	// chromedp.Flag("disable-ipc-flooding-protection", true),
+		// 	// chromedp.Flag("disable-popup-blocking", true),
+		// 	// chromedp.Flag("disable-prompt-on-repost", true),
+		// 	// chromedp.Flag("disable-renderer-backgrounding", true),
+		// 	// chromedp.Flag("disable-sync", true),
+		// 	// chromedp.Flag("force-color-profile", "srgb"),
+		// 	// chromedp.Flag("metrics-recording-only", true),
+		// 	// chromedp.Flag("safebrowsing-disable-auto-update", true),
+		// 	// chromedp.Flag("enable-automation", true),
+		// 	// chromedp.Flag("password-store", "basic"),
+		// 	// chromedp.Flag("use-mock-keychain", true),
+		// }
 		allocatorOptions = append(allocatorOptions,
-			chromedp.NoSandbox,
-			chromedp.Flag("use-gl", "angle"),
-			chromedp.Flag("use-angle", "swiftshader"))
+			chromedp.UserDataDir(dataDir),
+			chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
+				logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
+					append([]string{cmd.Path}, cmd.Args...)))
+			}),
+			chromedp.Flag("disable-blink-features", "AutomationControlled"))
+		if util.IsContainer() {
+			allocatorOptions = append(allocatorOptions,
+				chromedp.NoSandbox,
+				chromedp.Flag("use-gl", "angle"),
+				chromedp.Flag("use-angle", "swiftshader"))
+		}
+		allocatorOptions = append(allocatorOptions, execOptions...)
+
+		allocatorContext, cancelAllocator = chromedp.NewExecAllocator(ctx, allocatorOptions...)
+		closers = append(closers, cancelAllocator)
 	}
-	allocatorOptions = append(allocatorOptions, options...)
 
-	ctx, cancelAllocator := chromedp.NewExecAllocator(ctx, allocatorOptions...)
-	closers = append(closers, cancelAllocator)
-
-	ctx, cancelContext := chromedp.NewContext(ctx, chromedp.WithLogf(func(format string, args ...any) {
+	browserCtx, cancelBrowser := chromedp.NewContext(allocatorContext, chromedp.WithLogf(func(format string, args ...any) {
 		logging.L(ctx).Debugf("Browser: "+format, args...)
 	}))
-	closers = append(closers, cancelContext)
+	closers = append(closers, cancelBrowser)
 
-	return ctx, stop, nil
+	return browserCtx, stop, nil
 }
 
 var userAgentRe = regexp.MustCompile(
