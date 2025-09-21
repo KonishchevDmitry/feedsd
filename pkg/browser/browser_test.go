@@ -47,23 +47,6 @@ func TestGet(t *testing.T) {
 		body:        "<html><body>Some text</body></html>",
 		result:      "<html><head></head><body>Some text</body></html>",
 	}, {
-		name:        "js",
-		status:      http.StatusOK,
-		contentType: "text/html",
-		body: heredoc.Doc(`
-			<html>
-				<body onload="changeText()">
-					Initial Text
-					<script>
-						function changeText() {
-							document.body.innerText = "Changed text";
-						}
-					</script>
-				</body>
-			</html>
-		`),
-		result: `<html><head></head><body onload="changeText()">Changed text</body></html>`,
-	}, {
 		name:        "rss",
 		status:      http.StatusOK,
 		contentType: rss.ContentType,
@@ -113,6 +96,43 @@ func TestGet(t *testing.T) {
 				</channel>
 			</rss>
 		`),
+	}, {
+		name:        "js",
+		status:      http.StatusOK,
+		contentType: "text/html",
+		body: heredoc.Doc(`
+			<html>
+				<body onload="changeText()">
+					Initial Text
+					<script>
+						function changeText() {
+							document.body.innerText = "Changed text";
+						}
+					</script>
+				</body>
+			</html>
+		`),
+		result: `<html><head></head><body onload="changeText()">Changed text</body></html>`,
+	}, {
+		name:        "bot-detection",
+		status:      http.StatusOK,
+		contentType: "text/html",
+		body: heredoc.Doc(`
+			<html>
+				<body onload="botDetection()">
+					<script>
+						function botDetection() {
+							if(navigator.webdriver) {
+								document.body.innerText = "Bot is detected";
+							} else {
+								document.body.innerText = "Bot is not detected";
+							}
+						}
+					</script>
+				</body>
+			</html>
+		`),
+		result: `<html><head></head><body onload="botDetection()">Bot is not detected</body></html>`,
 	}}
 
 	ctx, stop, err := Configure(testutil.Context(t))

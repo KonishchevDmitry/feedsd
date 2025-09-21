@@ -130,6 +130,7 @@ func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ 
 	stop := func() {
 		logging.L(ctx).Debugf("Stopping the browser...")
 
+		// FIXME(konishchev): Cancel on success?
 		// It would be better to gracefully stop the browser first via chromedp.Cancel(), but it's buggy and
 		// cancelContext() panics after chromedp.Cancel() in case when browser has failed to start.
 
@@ -155,7 +156,9 @@ func configure(ctx context.Context, options ...chromedp.ExecAllocatorOption) (_ 
 	})
 
 	allocatorOptions := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
-	allocatorOptions = append(allocatorOptions, chromedp.UserDataDir(dataDir))
+	allocatorOptions = append(allocatorOptions,
+		chromedp.UserDataDir(dataDir),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"))
 	if util.IsContainer() {
 		allocatorOptions = append(allocatorOptions,
 			chromedp.NoSandbox,
