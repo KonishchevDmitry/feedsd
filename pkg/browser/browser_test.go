@@ -22,7 +22,6 @@ import (
 func TestGet(t *testing.T) {
 	t.Parallel()
 
-	// FIXME(konishchev): Add JS test
 	testCases := []struct {
 		name        string
 		status      int
@@ -47,6 +46,23 @@ func TestGet(t *testing.T) {
 		contentType: "text/html",
 		body:        "<html><body>Some text</body></html>",
 		result:      "<html><head></head><body>Some text</body></html>",
+	}, {
+		name:        "js",
+		status:      http.StatusOK,
+		contentType: "text/html",
+		body: heredoc.Doc(`
+			<html>
+				<body onload="changeText()">
+					Initial Text
+					<script>
+						function changeText() {
+							document.body.innerText = "Changed text";
+						}
+					</script>
+				</body>
+			</html>
+		`),
+		result: `<html><head></head><body onload="changeText()">Changed text</body></html>`,
 	}, {
 		name:        "rss",
 		status:      http.StatusOK,
