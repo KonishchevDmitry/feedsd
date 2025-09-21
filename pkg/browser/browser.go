@@ -174,7 +174,8 @@ func configure(ctx context.Context, options options, execOptions ...chromedp.Exe
 			}
 		})
 
-		// FIXME(konishchev): Rewrite it
+		// FIXME(konishchev): Rewrite it https://peter.sh/experiments/chromium-command-line-switches/
+		// FIXME(konishchev): https://bot.sannysoft.com/ + https://www.scrapingcourse.com/antibot-challenge
 		allocatorOptions := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
 		// allocatorOptions := []chromedp.ExecAllocatorOption{
 		// 	chromedp.NoFirstRun,
@@ -215,7 +216,7 @@ func configure(ctx context.Context, options options, execOptions ...chromedp.Exe
 				logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
 					append([]string{cmd.Path}, cmd.Args...)))
 			}),
-			chromedp.Flag("disable-blink-features", "AutomationControlled"))
+			chromedp.Flag("disable-blink-features", "AutomationControlled")) // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
 		if util.IsContainer() {
 			allocatorOptions = append(allocatorOptions,
 				chromedp.NoSandbox,
