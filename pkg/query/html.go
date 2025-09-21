@@ -1,9 +1,12 @@
 package query
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 
 	"github.com/KonishchevDmitry/feedsd/pkg/url"
 )
@@ -14,6 +17,26 @@ func HTMLOrError(selection *goquery.Selection) string {
 		html = fmt.Sprintf("[Failed to render the HTML: %s]", err)
 	}
 	return html
+}
+
+func Classes(selection *goquery.Selection) ([]string, error) {
+	if len(selection.Nodes) != 1 || selection.Nodes[0].Type != html.ElementNode {
+		return nil, errors.New("invalid selection to obtain node classes")
+	}
+
+	var classes []string
+
+	for _, attr := range selection.Nodes[0].Attr {
+		if attr.Key == "class" {
+			for _, class := range strings.Split(attr.Val, " ") {
+				if class != "" {
+					classes = append(classes, class)
+				}
+			}
+		}
+	}
+
+	return classes, nil
 }
 
 func Description(selection *goquery.Selection, baseURL *url.URL) (string, error) {
