@@ -104,6 +104,8 @@ func httpClientFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 
 func browserFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 	// FIXME(konishchev): Cache browser instance or at least User-Agent configuration
+	// https://pkg.go.dev/github.com/chromedp/chromedp#example-NewContext-ReuseBrowser
+	// https://pkg.go.dev/github.com/chromedp/chromedp#example-NewContext-ManyTabs
 	ctx, stop, err := browser.Configure(ctx)
 	if err != nil {
 		return nil, err

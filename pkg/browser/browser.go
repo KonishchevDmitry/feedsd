@@ -82,6 +82,7 @@ func Get(ctx context.Context, url *url.URL) (*Response, error) {
 	response, err := chromedp.RunResponse(ctx,
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
+		// FIXME(konishchev): Try https://github.com/chromedp/examples/blob/master/download_image/main.go
 		chromedp.Evaluate("document.body.innerText", &body),
 		chromedp.OuterHTML("html", &html),
 	)
