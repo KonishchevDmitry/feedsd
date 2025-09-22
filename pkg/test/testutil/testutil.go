@@ -11,7 +11,7 @@ import (
 )
 
 func Context(t *testing.T) context.Context {
-	return logging.WithLogger(context.Background(), zaptest.NewLogger(t).Sugar())
+	return logging.WithLogger(t.Context(), zaptest.NewLogger(t).Sugar())
 }
 
 func Limit[T any](items []T, limit int) []T {

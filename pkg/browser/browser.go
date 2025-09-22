@@ -51,6 +51,12 @@ func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func()
 		return ctx, nil, fmt.Errorf("the browser has an unexpected User-Agent: %q", actualUserAgent)
 	} else if match[2] != requiredBrowserName {
 		requiredUserAgent := fmt.Sprintf("%s%s%s", match[1], requiredBrowserName, match[3])
+		if options.remote.IsPresent() {
+			return ctx, nil, fmt.Errorf(
+				"the browser has an invalid User-Agent: %q vs %q expected",
+				actualUserAgent, requiredUserAgent)
+		}
+
 		logging.L(ctx).Debugf("Changing browser User-Agent to %q...", requiredUserAgent)
 
 		stop()
@@ -69,10 +75,6 @@ func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func()
 		}
 	}
 
-	if err := chromedp.Run(browserCtx); err != nil {
-		return ctx, nil, err
-	}
-
 	return browserCtx, stop, nil
 }
 
@@ -85,6 +87,14 @@ type Response struct {
 }
 
 func Get(ctx context.Context, url *url.URL) (*Response, error) {
+	if context := chromedp.FromContext(ctx); context == nil || context.Browser == nil {
+		return nil, errors.New("the browser is not configured")
+	}
+
+	// We need to create a child context to be able to use browser concurrently
+	ctx, cancel := chromedp.NewContext(ctx)
+	defer cancel()
+
 	var body, html string
 	response, err := chromedp.RunResponse(ctx,
 		chromedp.Navigate(url.String()),
@@ -133,9 +143,19 @@ func Get(ctx context.Context, url *url.URL) (*Response, error) {
 	}, nil
 }
 
-func configure(ctx context.Context, options options, execOptions ...chromedp.ExecAllocatorOption) (_ context.Context, _ func(), retErr error) {
+func configure(
+	ctx context.Context, options options, execOptions ...chromedp.ExecAllocatorOption,
+) (_ context.Context, _ func(), retErr error) {
+	if chromedp.FromContext(ctx) != nil {
+		return ctx, nil, errors.New("an attempt to configure browser when it's already configured")
+	}
+
 	var closers []func()
 	stop := func() {
+		if len(closers) == 0 {
+			return
+		}
+
 		logging.L(ctx).Debugf("Stopping the browser...")
 
 		// FIXME(konishchev): Cancel on success?
@@ -160,9 +180,14 @@ func configure(ctx context.Context, options options, execOptions ...chromedp.Exe
 	)
 
 	if remote, ok := options.remote.Get(); ok {
+		if len(execOptions) != 0 {
+			return ctx, nil, errors.New("an attempt to pass exec options to remote browser")
+		}
+
 		allocatorContext, cancelAllocator = chromedp.NewRemoteAllocator(ctx, remote)
 		closers = append(closers, cancelAllocator)
 	} else {
+		// FIXME(konishchev): Static, but dynamic for tests
 		dataDir, err := os.MkdirTemp("/var/tmp", "feedsd-browser-*")
 		if err != nil {
 			return ctx, nil, err
@@ -216,13 +241,16 @@ func configure(ctx context.Context, options options, execOptions ...chromedp.Exe
 				logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
 					append([]string{cmd.Path}, cmd.Args...)))
 			}),
-			chromedp.Flag("disable-blink-features", "AutomationControlled")) // https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
+			// https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
+			chromedp.Flag("disable-blink-features", "AutomationControlled"))
+
 		if util.IsContainer() {
 			allocatorOptions = append(allocatorOptions,
 				chromedp.NoSandbox,
 				chromedp.Flag("use-gl", "angle"),
 				chromedp.Flag("use-angle", "swiftshader"))
 		}
+
 		allocatorOptions = append(allocatorOptions, execOptions...)
 
 		allocatorContext, cancelAllocator = chromedp.NewExecAllocator(ctx, allocatorOptions...)
@@ -233,6 +261,11 @@ func configure(ctx context.Context, options options, execOptions ...chromedp.Exe
 		logging.L(ctx).Debugf("Browser: "+format, args...)
 	}))
 	closers = append(closers, cancelBrowser)
+
+	// [ Start the browser ], connect to it and initialize the context
+	if err := chromedp.Run(browserCtx); err != nil {
+		return ctx, nil, err
+	}
 
 	return browserCtx, stop, nil
 }

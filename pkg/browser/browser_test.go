@@ -143,10 +143,9 @@ func TestGet(t *testing.T) {
 	defer waitGroup.Wait()
 
 	run := func(t *testing.T, name string, test func(t *testing.T)) {
-		// XXX(konishchev): Support
-		// waitGroup.Go(func() {
-		t.Run(name, test)
-		// })
+		waitGroup.Go(func() {
+			t.Run(name, test)
+		})
 	}
 
 	for _, testCase := range testCases {

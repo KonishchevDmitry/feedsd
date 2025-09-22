@@ -39,12 +39,12 @@ func fetch[T any](
 		return zero, err
 	}
 
-	logging.L(ctx).Debugf("Fetching %s (emulate browser = %v)...", url, options.emulateBrowser.IsPresent())
+	logging.L(ctx).Debugf("Fetching %s (emulate browser = %v)...", url, options.emulateBrowser)
 
 	var response *fetchResult
 	startTime := time.Now()
-	if browserOptions, ok := options.emulateBrowser.Get(); ok {
-		response, err = browserFetch(ctx, url, browserOptions...)
+	if options.emulateBrowser {
+		response, err = browserFetch(ctx, url)
 	} else {
 		response, err = httpClientFetch(ctx, url)
 	}
@@ -102,16 +102,7 @@ func httpClientFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 	}, nil
 }
 
-func browserFetch(ctx context.Context, url *url.URL, options ...browser.Option) (*fetchResult, error) {
-	// FIXME(konishchev): Cache browser instance or at least User-Agent configuration
-	// https://pkg.go.dev/github.com/chromedp/chromedp#example-NewContext-ReuseBrowser
-	// https://pkg.go.dev/github.com/chromedp/chromedp#example-NewContext-ManyTabs
-	ctx, stop, err := browser.Configure(ctx, options...)
-	if err != nil {
-		return nil, err
-	}
-	defer stop()
-
+func browserFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 	response, err := browser.Get(ctx, url)
 	if err != nil {
 		return nil, makeTemporaryError(err)
