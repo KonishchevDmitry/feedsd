@@ -10,9 +10,12 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"al.essio.dev/pkg/shellescape"
@@ -20,14 +23,15 @@ import (
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/chromedp/chromedp"
+	"github.com/samber/mo"
 )
 
 func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func(), retErr error) {
 	logging.L(ctx).Debugf("Configuring the browser...")
 
-	var options options
-	for _, opt := range opts {
-		opt(&options)
+	options, err := getOptions(opts)
+	if err != nil {
+		return ctx, nil, err
 	}
 
 	browserCtx, stop, err := configure(ctx, options)
@@ -187,16 +191,12 @@ func configure(
 		allocatorContext, cancelAllocator = chromedp.NewRemoteAllocator(ctx, remote)
 		closers = append(closers, cancelAllocator)
 	} else {
-		// FIXME(konishchev): Static, but dynamic for tests
-		dataDir, err := os.MkdirTemp("/var/tmp", "feedsd-browser-*")
+		userDataDir, removeUserDataDir, err := getUserDataDir(options.persistent)
 		if err != nil {
 			return ctx, nil, err
 		}
 		closers = append(closers, func() {
-			// FIXME(konishchev): Failed to delete browser data directory "/var/tmp/feedsd-browser-3627646949": unlinkat /var/tmp/feedsd-browser-3627646949/Default: directory not empty
-			if err := os.RemoveAll(dataDir); err != nil {
-				logging.L(ctx).Errorf("Failed to delete browser data directory %q: %s", dataDir, err)
-			}
+			removeUserDataDir(ctx)
 		})
 
 		// FIXME(konishchev): Rewrite it https://peter.sh/experiments/chromium-command-line-switches/
@@ -236,7 +236,7 @@ func configure(
 		// 	// chromedp.Flag("use-mock-keychain", true),
 		// }
 		allocatorOptions = append(allocatorOptions,
-			chromedp.UserDataDir(dataDir),
+			chromedp.UserDataDir(userDataDir),
 			chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
 				logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
 					append([]string{cmd.Path}, cmd.Args...)))
@@ -268,6 +268,65 @@ func configure(
 	}
 
 	return browserCtx, stop, nil
+}
+
+func getUserDataDir(persistent mo.Option[string]) (string, func(ctx context.Context), error) {
+	if daemonName, ok := persistent.Get(); ok {
+		path, err := getPersistentUserDataDir(daemonName)
+		if err != nil {
+			return "", nil, err
+		}
+		return path, func(ctx context.Context) {}, nil
+	}
+
+	dataDir, err := os.MkdirTemp("/var/tmp", "feedsd-browser-*")
+	if err != nil {
+		return "", nil, err
+	}
+
+	return dataDir, func(ctx context.Context) {
+		// chromedp fails to wait for all browser processes termination, so they can still exist and write to the directory
+		// (see https://github.com/chromedp/chromedp/blob/422fa06290cda228e5712bdda55fbf7a0f6c8466/allocate.go#L227),
+		// so try to workaround the issue.
+
+		var attempt int
+
+		for {
+			attempt++
+
+			if err := os.RemoveAll(dataDir); err != nil {
+				message := fmt.Sprintf("Failed to delete browser data directory %q: %s.", dataDir, err)
+
+				var errno syscall.Errno
+				if errors.As(err, &errno) && errno == syscall.ENOTEMPTY && attempt < 10 {
+					logging.L(ctx).Debugf("%s Retrying...", message)
+					continue
+				}
+
+				logging.L(ctx).Error(message)
+			}
+
+			break
+		}
+
+	}, nil
+}
+
+// Please note that Chrome has tricky rules for deriving cache directory path from user data path.
+//
+// See https://chromium.googlesource.com/chromium/src/+/main/docs/user_data_dir.md for details.
+func getPersistentUserDataDir(daemonName string) (string, error) {
+	basePath := "/var/lib"
+
+	if runtime.GOOS == "darwin" {
+		homePath, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		basePath = filepath.Join(homePath, ".cache")
+	}
+
+	return filepath.Join(basePath, fmt.Sprintf("%s-browser", daemonName)), nil
 }
 
 var userAgentRe = regexp.MustCompile(
