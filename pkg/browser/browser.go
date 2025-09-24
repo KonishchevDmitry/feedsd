@@ -90,23 +90,37 @@ type Response struct {
 	Body        string
 }
 
-func Get(ctx context.Context, url *url.URL) (*Response, error) {
+func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, error) {
 	if context := chromedp.FromContext(ctx); context == nil || context.Browser == nil {
 		return nil, errors.New("the browser is not configured")
+	}
+
+	var options queryOptions
+	for _, opt := range opts {
+		opt(&options)
 	}
 
 	// We need to create a child context to be able to use browser concurrently
 	ctx, cancel := chromedp.NewContext(ctx)
 	defer cancel()
 
-	var body, html string
-	response, err := chromedp.RunResponse(ctx,
+	actions := []chromedp.Action{
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
+	}
+
+	if duration := options.sleep; duration != 0 {
+		actions = append(actions, chromedp.Sleep(duration))
+	}
+
+	var body, html string
+	actions = append(actions,
 		// FIXME(konishchev): Try https://github.com/chromedp/examples/blob/master/download_image/main.go
 		chromedp.Evaluate("document.body.innerText", &body),
 		chromedp.OuterHTML("html", &html),
 	)
+
+	response, err := chromedp.RunResponse(ctx, actions...)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +205,7 @@ func configure(
 		allocatorContext, cancelAllocator = chromedp.NewRemoteAllocator(ctx, remote)
 		closers = append(closers, cancelAllocator)
 	} else {
-		userDataDir, removeUserDataDir, err := getUserDataDir(options.persistent)
+		userDataDir, removeUserDataDir, err := getUserDataDir(options.persistentData)
 		if err != nil {
 			return ctx, nil, err
 		}
@@ -199,54 +213,61 @@ func configure(
 			removeUserDataDir(ctx)
 		})
 
-		// FIXME(konishchev): Rewrite it https://peter.sh/experiments/chromium-command-line-switches/
-		// FIXME(konishchev): https://bot.sannysoft.com/ + https://www.scrapingcourse.com/antibot-challenge
-		allocatorOptions := slices.Clone(chromedp.DefaultExecAllocatorOptions[:])
-		// allocatorOptions := []chromedp.ExecAllocatorOption{
-		// 	chromedp.NoFirstRun,
-		// 	chromedp.NoDefaultBrowserCheck,
+		// See https://peter.sh/experiments/chromium-command-line-switches/ for option docs.
+		//
+		// Bot detection tools:
+		// * https://fingerprint-scan.com/
+		// * https://bot.sannysoft.com/
+		//
+		// Don't use flag wrappers, because they may implicitly enable other flags (like chromedp.Headless does).
+		allocatorOptions := []chromedp.ExecAllocatorOption{
+			// A subset of chromedp.DefaultExecAllocatorOptions which may be actual for us
 
-		// 	// chromedp.Headless,
-		// 	chromedp.Flag("headless", true),
-		// 	// chromedp.Flag("hide-scrollbars", true),
-		// 	// chromedp.Flag("mute-audio", true),
+			chromedp.Flag("no-first-run", true),
+			chromedp.Flag("disable-breakpad", true),
+			chromedp.Flag("metrics-recording-only", true),
+			chromedp.Flag("no-default-browser-check", true),
 
-		// 	// After Puppeteer's default behavior.
-		// 	// chromedp.Flag("disable-background-networking", true),
-		// 	// chromedp.Flag("enable-features", "NetworkService,NetworkServiceInProcess"),
-		// 	// chromedp.Flag("disable-background-timer-throttling", true),
-		// 	// chromedp.Flag("disable-backgrounding-occluded-windows", true),
-		// 	// chromedp.Flag("disable-breakpad", true),
-		// 	// chromedp.Flag("disable-client-side-phishing-detection", true),
-		// 	// chromedp.Flag("disable-default-apps", true),
-		// 	// chromedp.Flag("disable-dev-shm-usage", true),
-		// 	// chromedp.Flag("disable-extensions", true),
-		// 	// chromedp.Flag("disable-features", "site-per-process,Translate,BlinkGenPropertyTrees"),
-		// 	// chromedp.Flag("disable-hang-monitor", true),
-		// 	// chromedp.Flag("disable-ipc-flooding-protection", true),
-		// 	// chromedp.Flag("disable-popup-blocking", true),
-		// 	// chromedp.Flag("disable-prompt-on-repost", true),
-		// 	// chromedp.Flag("disable-renderer-backgrounding", true),
-		// 	// chromedp.Flag("disable-sync", true),
-		// 	// chromedp.Flag("force-color-profile", "srgb"),
-		// 	// chromedp.Flag("metrics-recording-only", true),
-		// 	// chromedp.Flag("safebrowsing-disable-auto-update", true),
-		// 	// chromedp.Flag("enable-automation", true),
-		// 	// chromedp.Flag("password-store", "basic"),
-		// 	// chromedp.Flag("use-mock-keychain", true),
-		// }
-		allocatorOptions = append(allocatorOptions,
-			chromedp.UserDataDir(userDataDir),
+			chromedp.Flag("mute-audio", true),
+			chromedp.Flag("disable-background-networking", true),
+
+			chromedp.Flag("disable-extensions", true),
+			chromedp.Flag("disable-default-apps", true),
+
+			chromedp.Flag("safebrowsing-disable-auto-update", true),
+			chromedp.Flag("disable-client-side-phishing-detection", true),
+
+			chromedp.Flag("disable-hang-monitor", true),
+			chromedp.Flag("disable-renderer-backgrounding", true),
+			chromedp.Flag("disable-ipc-flooding-protection", true),
+			chromedp.Flag("disable-background-timer-throttling", true),
+			chromedp.Flag("disable-backgrounding-occluded-windows", true),
+
+			chromedp.Flag("disable-features", "site-per-process,Translate"),
+			chromedp.Flag("enable-features", "NetworkService,NetworkServiceInProcess"),
+
+			chromedp.Flag("use-mock-keychain", true),
+
+			// Our customizations
+
+			chromedp.Flag("user-data-dir", userDataDir),
+
+			chromedp.Flag("headless", !options.headful),
+			chromedp.Flag("start-maximized", options.headful),
+
+			// https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
+			chromedp.Flag("disable-blink-features", "AutomationControlled"),
+
 			chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
 				logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
 					append([]string{cmd.Path}, cmd.Args...)))
 			}),
-			// https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
-			chromedp.Flag("disable-blink-features", "AutomationControlled"))
+		}
 
 		if util.IsContainer() {
 			allocatorOptions = append(allocatorOptions,
-				chromedp.NoSandbox,
+				// FIXME(konishchev): disable-dev-shm-usage?
+				chromedp.Flag("no-sandbox", true),
 				chromedp.Flag("use-gl", "angle"),
 				chromedp.Flag("use-angle", "swiftshader"))
 		}

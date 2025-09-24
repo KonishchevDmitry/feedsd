@@ -39,12 +39,12 @@ func fetch[T any](
 		return zero, err
 	}
 
-	logging.L(ctx).Debugf("Fetching %s (emulate browser = %v)...", url, options.emulateBrowser)
+	logging.L(ctx).Debugf("Fetching %s (emulate browser = %v)...", url, options.emulateBrowser.IsPresent())
 
 	var response *fetchResult
 	startTime := time.Now()
-	if options.emulateBrowser {
-		response, err = browserFetch(ctx, url)
+	if queryOptions, ok := options.emulateBrowser.Get(); ok {
+		response, err = browserFetch(ctx, url, queryOptions...)
 	} else {
 		response, err = httpClientFetch(ctx, url)
 	}
@@ -102,8 +102,8 @@ func httpClientFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 	}, nil
 }
 
-func browserFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
-	response, err := browser.Get(ctx, url)
+func browserFetch(ctx context.Context, url *url.URL, options ...browser.QueryOption) (*fetchResult, error) {
+	response, err := browser.Get(ctx, url, options...)
 	if err != nil {
 		return nil, makeTemporaryError(err)
 	}

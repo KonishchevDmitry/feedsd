@@ -3,13 +3,16 @@ package browser
 import (
 	"errors"
 	"net/url"
+	"time"
 
 	"github.com/samber/mo"
 )
 
 type options struct {
-	remote     mo.Option[string]
-	persistent mo.Option[string]
+	remote mo.Option[string]
+
+	headful        bool
+	persistentData mo.Option[string]
 }
 
 func getOptions(opts []Option) (options, error) {
@@ -18,7 +21,8 @@ func getOptions(opts []Option) (options, error) {
 		opt(&o)
 	}
 
-	if o.remote.IsPresent() && o.persistent.IsPresent() {
+	local := o.headful || o.persistentData.IsPresent()
+	if local && o.remote.IsPresent() {
 		return o, errors.New("mixed remote and local browser options")
 	}
 
@@ -37,8 +41,26 @@ func Remote(hostPort string) Option {
 	}
 }
 
-func Persistent(daemonName string) Option {
+func Headful() Option {
 	return func(o *options) {
-		o.persistent = mo.Some(daemonName)
+		o.headful = true
+	}
+}
+
+func PersistentData(daemonName string) Option {
+	return func(o *options) {
+		o.persistentData = mo.Some(daemonName)
+	}
+}
+
+type queryOptions struct {
+	sleep time.Duration
+}
+
+type QueryOption func(o *queryOptions)
+
+func Sleep(duration time.Duration) QueryOption {
+	return func(o *queryOptions) {
+		o.sleep = duration
 	}
 }

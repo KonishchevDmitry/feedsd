@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/KonishchevDmitry/feedsd/pkg/test/testutil"
 	"github.com/KonishchevDmitry/feedsd/pkg/url"
 	"github.com/MakeNowJust/heredoc"
+	"github.com/chromedp/chromedp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -224,4 +227,61 @@ func TestUserAgentRegex(t *testing.T) {
 			require.Equal(t, "Chrome", matches[2])
 		})
 	}
+}
+
+func TestChromedpDefaults(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		options []chromedp.ExecAllocatorOption
+		result  []string
+	}{{
+		name:   "empty",
+		result: []string{"--user-data-dir=...", "--remote-debugging-port=0", "about:blank"},
+	}, {
+		name:    "provided-defaults",
+		options: chromedp.DefaultExecAllocatorOptions[:],
+		result: []string{
+			"--hide-scrollbars", "--disable-backgrounding-occluded-windows", "--disable-prompt-on-repost",
+			"--disable-features=site-per-process,Translate,BlinkGenPropertyTrees", "--disable-ipc-flooding-protection",
+			"--force-color-profile=srgb", "--no-first-run", "--disable-background-networking",
+			"--enable-features=NetworkService,NetworkServiceInProcess", "--disable-default-apps",
+			"--metrics-recording-only", "--safebrowsing-disable-auto-update", "--enable-automation",
+			"--use-mock-keychain", "--disable-background-timer-throttling", "--disable-client-side-phishing-detection",
+			"--disable-extensions", "--disable-popup-blocking", "--disable-sync", "--password-store=basic",
+			"--mute-audio", "--disable-breakpad", "--disable-dev-shm-usage", "--disable-hang-monitor",
+			"--disable-renderer-backgrounding", "--no-default-browser-check", "--headless", "--user-data-dir=...",
+			"--remote-debugging-port=0", "about:blank",
+		},
+	}}
+
+	for _, c := range testCases {
+		t.Run(c.name, func(t *testing.T) {
+			var args []string
+			options := append(c.options, chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
+				cmd.Path = "/bin/false"
+				args = cmd.Args[1:]
+			}))
+
+			ctx, cancelAllocator := chromedp.NewExecAllocator(t.Context(), options...)
+			defer cancelAllocator()
+
+			ctx, cancelTarget := chromedp.NewContext(ctx)
+			defer cancelTarget()
+
+			require.Error(t, chromedp.Run(ctx))
+
+			for index, arg := range args {
+				prefix := "--user-data-dir="
+				if strings.HasPrefix(arg, prefix) {
+					args[index] = prefix + "..."
+					break
+				}
+			}
+
+			require.ElementsMatch(t, c.result, args)
+		})
+	}
+
 }

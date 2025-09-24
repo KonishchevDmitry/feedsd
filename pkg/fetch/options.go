@@ -1,13 +1,18 @@
 package fetch
 
+import (
+	"github.com/KonishchevDmitry/feedsd/pkg/browser"
+	"github.com/samber/mo"
+)
+
 type Option func(o *options)
 
 type options struct {
-	emulateBrowser bool
+	emulateBrowser mo.Option[[]browser.QueryOption]
 }
 
-func EmulateBrowser() Option {
+func EmulateBrowser(queryOptions ...browser.QueryOption) Option {
 	return func(o *options) {
-		o.emulateBrowser = true
+		o.emulateBrowser = mo.Some(queryOptions)
 	}
 }
