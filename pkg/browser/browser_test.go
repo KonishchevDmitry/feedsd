@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"mime"
 	"net"
@@ -33,25 +34,20 @@ func TestGet(t *testing.T) {
 		result      string
 	}{{
 		name:        "text",
-		status:      http.StatusOK,
 		contentType: "text/plain",
 		body:        "Some & text",
 		result:      "Some & text",
 	}, {
-		name:        "error",
-		status:      http.StatusInternalServerError,
-		contentType: "text/html",
-		body:        "Some error",
-		result:      "<html><head></head><body>Some error</body></html>",
+		name:   "error",
+		status: http.StatusInternalServerError,
+		body:   "Some error",
+		result: "<html><head></head><body>Some error</body></html>",
 	}, {
-		name:        "html",
-		status:      http.StatusOK,
-		contentType: "text/html",
-		body:        "<html><body>Some text</body></html>",
-		result:      "<html><head></head><body>Some text</body></html>",
+		name:   "html",
+		body:   "<html><body>Some text</body></html>",
+		result: "<html><head></head><body>Some text</body></html>",
 	}, {
 		name:        "rss",
-		status:      http.StatusOK,
 		contentType: rss.ContentType,
 		body: heredoc.Doc(`
 			<?xml version="1.0" encoding="UTF-8"?>
@@ -75,7 +71,6 @@ func TestGet(t *testing.T) {
 		`),
 	}, {
 		name:        "xml",
-		status:      http.StatusOK,
 		contentType: "text/xml",
 		body: heredoc.Doc(`
 			<?xml version="1.0" encoding="UTF-8"?>
@@ -100,9 +95,7 @@ func TestGet(t *testing.T) {
 			</rss>
 		`),
 	}, {
-		name:        "js",
-		status:      http.StatusOK,
-		contentType: "text/html",
+		name: "js",
 		body: heredoc.Doc(`
 			<html>
 				<body onload="changeText()">
@@ -117,9 +110,7 @@ func TestGet(t *testing.T) {
 		`),
 		result: `<html><head></head><body onload="changeText()">Changed text</body></html>`,
 	}, {
-		name:        "bot-detection",
-		status:      http.StatusOK,
-		contentType: "text/html",
+		name: "bot-detection",
 		body: heredoc.Doc(`
 			<html>
 				<body onload="botDetection()">
@@ -136,6 +127,23 @@ func TestGet(t *testing.T) {
 			</html>
 		`),
 		result: `<html><head></head><body onload="botDetection()">Bot is not detected</body></html>`,
+	}, {
+		name: "screen-size",
+		body: heredoc.Doc(`
+			<html>
+				<body onload="getViewportSize()">
+					<script>
+						function getViewportSize() {
+      						document.body.innerText = ` + "`${window.screen.width}x${window.screen.height} / ${window.innerWidth}x${window.innerHeight}`" + `
+ 						}
+					</script>
+				</body>
+			</html>
+		`),
+		result: fmt.Sprintf(
+			`<html><head></head><body onload="getViewportSize()">%dx%d / %dx%d</body></html>`,
+			screenWidth, screenHeight, viewportWidth, viewportHeight,
+		),
 	}}
 
 	ctx, stop, err := Configure(testutil.Context(t))
@@ -153,9 +161,19 @@ func TestGet(t *testing.T) {
 
 	for _, testCase := range testCases {
 		run(t, testCase.name, func(t *testing.T) {
+			status := testCase.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+
+			contentType := testCase.contentType
+			if contentType == "" {
+				contentType = "text/html"
+			}
+
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", testCase.contentType)
-				w.WriteHeader(testCase.status)
+				w.Header().Set("Content-Type", contentType)
+				w.WriteHeader(status)
 				_, _ = io.WriteString(w, testCase.body)
 			}))
 			defer server.Close()
@@ -163,7 +181,7 @@ func TestGet(t *testing.T) {
 			response, err := Get(ctx, url.MustParse(server.URL))
 			require.NoError(t, err)
 
-			mediaType, _, err := mime.ParseMediaType(testCase.contentType)
+			mediaType, _, err := mime.ParseMediaType(contentType)
 			require.NoError(t, err)
 
 			body, expected := response.Body, testCase.result
@@ -174,8 +192,8 @@ func TestGet(t *testing.T) {
 			}
 
 			require.Equal(t, server.URL+"/", response.URL)
-			require.Equal(t, testCase.status, response.StatusCode)
-			require.Equal(t, testCase.contentType, response.ContentType)
+			require.Equal(t, status, response.StatusCode)
+			require.Equal(t, contentType, response.ContentType)
 			require.Equal(t, expected, body)
 		})
 	}

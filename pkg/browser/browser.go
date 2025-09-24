@@ -22,8 +22,14 @@ import (
 	"github.com/KonishchevDmitry/feedsd/internal/util"
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
 	"github.com/samber/mo"
+)
+
+const (
+	screenWidth, screenHeight     = 1728, 1117
+	viewportWidth, viewportHeight = 1664, 992
 )
 
 func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func(), retErr error) {
@@ -105,6 +111,13 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 	defer cancel()
 
 	actions := []chromedp.Action{
+		&emulation.SetDeviceMetricsOverrideParams{
+			Width:  viewportWidth,
+			Height: viewportHeight,
+
+			ScreenWidth:  screenWidth,
+			ScreenHeight: screenHeight,
+		},
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
 	}
