@@ -176,7 +176,7 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 
 func configure(
 	ctx context.Context, options options, execOptions ...chromedp.ExecAllocatorOption,
-) (_ context.Context, _ func(), retErr error) {
+) (retCtx context.Context, _ func(), retErr error) {
 	if chromedp.FromContext(ctx) != nil {
 		return ctx, nil, errors.New("an attempt to configure browser when it's already configured")
 	}
@@ -189,9 +189,13 @@ func configure(
 
 		logging.L(ctx).Debugf("Stopping the browser...")
 
-		// FIXME(konishchev): Cancel on success?
-		// It would be better to gracefully stop the browser first via chromedp.Cancel(), but it's buggy and
-		// cancelContext() panics after chromedp.Cancel() in case when browser has failed to start.
+		// chromedp has a bug due to which chromedp.Cancel() shouldn't be used for partially initialized context (we may
+		// get a panic if browser has failed to start).
+		if retErr == nil {
+			if err := chromedp.Cancel(retCtx); err != nil {
+				logging.L(ctx).Errorf("Failed to gracefully shutdown the browser: %s.", err)
+			}
+		}
 
 		for _, close := range slices.Backward(closers) {
 			close()
