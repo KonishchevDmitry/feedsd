@@ -232,6 +232,28 @@ func TestGet(t *testing.T) {
 	})
 }
 
+func TestUserAgent(t *testing.T) {
+	t.Parallel()
+
+	ctx, stop, err := Configure(testutil.Context(t))
+	require.NoError(t, err)
+	defer stop()
+
+	var userAgent string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgent = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "text/plain")
+	}))
+	defer server.Close()
+
+	_, err = Get(ctx, url.MustParse(server.URL))
+	require.NoError(t, err)
+
+	matches := userAgentRe.FindStringSubmatch(userAgent)
+	require.NotEmpty(t, matches, userAgent)
+	require.Equal(t, "Chrome", matches[2])
+}
+
 func TestUserAgentRegex(t *testing.T) {
 	t.Parallel()
 
@@ -301,5 +323,4 @@ func TestChromedpDefaults(t *testing.T) {
 			require.ElementsMatch(t, c.result, args)
 		})
 	}
-
 }

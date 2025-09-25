@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net"
 	"net/http"
@@ -32,7 +33,11 @@ const (
 	viewportWidth, viewportHeight = 1664, 992
 )
 
-func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func(), retErr error) {
+func Configure(ctx context.Context, opts ...Option) (retCtx context.Context, _ func(), retErr error) {
+	if _, ok := getConfigurationContext(ctx); ok || chromedp.FromContext(ctx) != nil {
+		return ctx, nil, errors.New("an attempt to configure browser when it's already configured")
+	}
+
 	logging.L(ctx).Debugf("Configuring the browser...")
 
 	options, err := getOptions(opts)
@@ -40,49 +45,75 @@ func Configure(ctx context.Context, opts ...Option) (_ context.Context, _ func()
 		return ctx, nil, err
 	}
 
-	browserCtx, stop, err := configure(ctx, options)
-	if err != nil {
-		return ctx, nil, err
+	var closers []func()
+	stop := func() {
+		if len(closers) != 0 {
+			logging.L(ctx).Debugf("Stopping the browser...")
+			for _, close := range slices.Backward(closers) {
+				close()
+			}
+			logging.L(ctx).Debugf("The browser has stopped.")
+		}
 	}
 	defer func() {
-		if retErr != nil && stop != nil {
+		if retErr != nil {
 			stop()
 		}
 	}()
 
-	actualUserAgent, err := getUserAgent(browserCtx)
-	if err != nil {
+	var (
+		allocatorContext context.Context
+		cancelAllocator  func()
+	)
+
+	if remote, ok := options.remote.Get(); ok {
+		allocatorContext, cancelAllocator = chromedp.NewRemoteAllocator(ctx, remote)
+	} else {
+		allocatorContext, cancelAllocator, err = configureExecAllocator(ctx, options)
+		if err != nil {
+			return ctx, nil, err
+		}
+	}
+	closers = append(closers, cancelAllocator)
+
+	browserCtx, cancelBrowser := chromedp.NewContext(allocatorContext, chromedp.WithLogf(func(format string, args ...any) {
+		logging.L(ctx).Debugf("Browser: "+format, args...)
+	}))
+	closers = append(closers, cancelBrowser)
+
+	// [ Start the browser ], connect to it and initialize the context
+	var userAgent string
+	if err := chromedp.Run(browserCtx, chromedp.Evaluate(
+		`navigator.userAgent`, &userAgent,
+	)); err != nil {
 		return ctx, nil, err
 	}
+	closers = append(closers, func() {
+		// chromedp has a bug due to which chromedp.Cancel() shouldn't be used for partially initialized context (we may
+		// get a panic if browser has failed to start).
+		if err := chromedp.Cancel(browserCtx); err != nil {
+			logging.L(ctx).Errorf("Failed to gracefully shutdown the browser: %s.", err)
+		}
+	})
 
 	requiredBrowserName := "Chrome"
-	if match := userAgentRe.FindStringSubmatch(actualUserAgent); len(match) == 0 ||
+	if match := userAgentRe.FindStringSubmatch(userAgent); len(match) == 0 ||
 		(match[2] != requiredBrowserName && match[2] != "Headless"+requiredBrowserName) {
-		return ctx, nil, fmt.Errorf("the browser has an unexpected User-Agent: %q", actualUserAgent)
+		return ctx, nil, fmt.Errorf("the browser has an unexpected User-Agent: %q", userAgent)
 	} else if match[2] != requiredBrowserName {
-		requiredUserAgent := fmt.Sprintf("%s%s%s", match[1], requiredBrowserName, match[3])
-		if options.remote.IsPresent() {
-			return ctx, nil, fmt.Errorf(
-				"the browser has an invalid User-Agent: %q vs %q expected",
-				actualUserAgent, requiredUserAgent)
-		}
+		userAgent = fmt.Sprintf("%s%s%s", match[1], requiredBrowserName, match[3])
+	}
 
-		logging.L(ctx).Debugf("Changing browser User-Agent to %q...", requiredUserAgent)
+	browserCtx = context.WithValue(browserCtx, contextKey{}, &configurationContext{
+		userAgent: userAgent,
+	})
 
-		stop()
-		browserCtx, stop, err = configure(ctx, options, chromedp.UserAgent(requiredUserAgent))
-		if err != nil {
-			return ctx, nil, err
-		}
-
-		actualUserAgent, err = getUserAgent(browserCtx)
-		if err != nil {
-			return ctx, nil, err
-		} else if actualUserAgent != requiredUserAgent {
-			return ctx, nil, fmt.Errorf(
-				"failed to change browser User-Agent to %q: it still has %q",
-				requiredUserAgent, actualUserAgent)
-		}
+	if actualUserAgent, err := getUserAgent(browserCtx); err != nil {
+		return ctx, nil, err
+	} else if actualUserAgent != userAgent {
+		return ctx, nil, fmt.Errorf(
+			"failed to set browser User-Agent to %q: it actually uses %q",
+			userAgent, actualUserAgent)
 	}
 
 	return browserCtx, stop, nil
@@ -97,7 +128,8 @@ type Response struct {
 }
 
 func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, error) {
-	if context := chromedp.FromContext(ctx); context == nil || context.Browser == nil {
+	configurationContext, _ := getConfigurationContext(ctx)
+	if browserContext := chromedp.FromContext(ctx); browserContext == nil || browserContext.Browser == nil || configurationContext == nil {
 		return nil, errors.New("the browser is not configured")
 	}
 
@@ -118,6 +150,8 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 			ScreenWidth:  screenWidth,
 			ScreenHeight: screenHeight,
 		},
+		emulation.SetUserAgentOverride(configurationContext.userAgent),
+
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
 	}
@@ -174,138 +208,90 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 	}, nil
 }
 
-func configure(
-	ctx context.Context, options options, execOptions ...chromedp.ExecAllocatorOption,
-) (retCtx context.Context, _ func(), retErr error) {
-	if chromedp.FromContext(ctx) != nil {
-		return ctx, nil, errors.New("an attempt to configure browser when it's already configured")
-	}
-
+func configureExecAllocator(ctx context.Context, options options) (_ context.Context, _ func(), retErr error) {
 	var closers []func()
-	stop := func() {
-		if len(closers) == 0 {
-			return
-		}
-
-		logging.L(ctx).Debugf("Stopping the browser...")
-
-		// chromedp has a bug due to which chromedp.Cancel() shouldn't be used for partially initialized context (we may
-		// get a panic if browser has failed to start).
-		if retErr == nil {
-			if err := chromedp.Cancel(retCtx); err != nil {
-				logging.L(ctx).Errorf("Failed to gracefully shutdown the browser: %s.", err)
-			}
-		}
-
+	close := func() {
 		for _, close := range slices.Backward(closers) {
 			close()
 		}
-
-		logging.L(ctx).Debugf("The browser has stopped.")
 	}
 	defer func() {
 		if retErr != nil {
-			stop()
+			close()
 		}
 	}()
 
-	var (
-		allocatorContext context.Context
-		cancelAllocator  func()
-	)
-
-	if remote, ok := options.remote.Get(); ok {
-		if len(execOptions) != 0 {
-			return ctx, nil, errors.New("an attempt to pass exec options to remote browser")
-		}
-
-		allocatorContext, cancelAllocator = chromedp.NewRemoteAllocator(ctx, remote)
-		closers = append(closers, cancelAllocator)
-	} else {
-		userDataDir, removeUserDataDir, err := getUserDataDir(options.persistentData)
-		if err != nil {
-			return ctx, nil, err
-		}
-		closers = append(closers, func() {
-			removeUserDataDir(ctx)
-		})
-
-		// See https://peter.sh/experiments/chromium-command-line-switches/ for option docs.
-		//
-		// Bot detection tools:
-		// * https://fingerprint-scan.com/
-		// * https://bot.sannysoft.com/
-		//
-		// Don't use flag wrappers, because they may implicitly enable other flags (like chromedp.Headless does).
-		allocatorOptions := []chromedp.ExecAllocatorOption{
-			// A subset of chromedp.DefaultExecAllocatorOptions which may be actual for us
-
-			chromedp.Flag("no-first-run", true),
-			chromedp.Flag("disable-breakpad", true),
-			chromedp.Flag("metrics-recording-only", true),
-			chromedp.Flag("no-default-browser-check", true),
-
-			chromedp.Flag("mute-audio", true),
-			chromedp.Flag("disable-background-networking", true),
-
-			chromedp.Flag("disable-extensions", true),
-			chromedp.Flag("disable-default-apps", true),
-
-			chromedp.Flag("safebrowsing-disable-auto-update", true),
-			chromedp.Flag("disable-client-side-phishing-detection", true),
-
-			chromedp.Flag("disable-hang-monitor", true),
-			chromedp.Flag("disable-renderer-backgrounding", true),
-			chromedp.Flag("disable-ipc-flooding-protection", true),
-			chromedp.Flag("disable-background-timer-throttling", true),
-			chromedp.Flag("disable-backgrounding-occluded-windows", true),
-
-			chromedp.Flag("disable-features", "site-per-process,Translate"),
-			chromedp.Flag("enable-features", "NetworkService,NetworkServiceInProcess"),
-
-			chromedp.Flag("use-mock-keychain", true),
-
-			// Our customizations
-
-			chromedp.Flag("user-data-dir", userDataDir),
-
-			chromedp.Flag("headless", !options.headful),
-			chromedp.Flag("start-maximized", options.headful),
-
-			// https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
-			chromedp.Flag("disable-blink-features", "AutomationControlled"),
-
-			chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
-				logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
-					append([]string{cmd.Path}, cmd.Args...)))
-			}),
-		}
-
-		if util.IsContainer() {
-			allocatorOptions = append(allocatorOptions,
-				// FIXME(konishchev): disable-dev-shm-usage?
-				chromedp.Flag("no-sandbox", true),
-				chromedp.Flag("use-gl", "angle"),
-				chromedp.Flag("use-angle", "swiftshader"))
-		}
-
-		allocatorOptions = append(allocatorOptions, execOptions...)
-
-		allocatorContext, cancelAllocator = chromedp.NewExecAllocator(ctx, allocatorOptions...)
-		closers = append(closers, cancelAllocator)
-	}
-
-	browserCtx, cancelBrowser := chromedp.NewContext(allocatorContext, chromedp.WithLogf(func(format string, args ...any) {
-		logging.L(ctx).Debugf("Browser: "+format, args...)
-	}))
-	closers = append(closers, cancelBrowser)
-
-	// [ Start the browser ], connect to it and initialize the context
-	if err := chromedp.Run(browserCtx); err != nil {
+	userDataDir, removeUserDataDir, err := getUserDataDir(options.persistentData)
+	if err != nil {
 		return ctx, nil, err
 	}
+	closers = append(closers, func() {
+		removeUserDataDir(ctx)
+	})
 
-	return browserCtx, stop, nil
+	// See https://peter.sh/experiments/chromium-command-line-switches/ for option docs.
+	//
+	// Bot detection tools:
+	// * https://fingerprint-scan.com/
+	// * https://bot.sannysoft.com/
+	//
+	// Don't use flag wrappers, because they may implicitly enable other flags (like chromedp.Headless does).
+	allocatorOptions := []chromedp.ExecAllocatorOption{
+		// A subset of chromedp.DefaultExecAllocatorOptions which may be actual for us
+
+		chromedp.Flag("no-first-run", true),
+		chromedp.Flag("disable-breakpad", true),
+		chromedp.Flag("metrics-recording-only", true),
+		chromedp.Flag("no-default-browser-check", true),
+
+		chromedp.Flag("mute-audio", true),
+		chromedp.Flag("disable-background-networking", true),
+
+		chromedp.Flag("disable-extensions", true),
+		chromedp.Flag("disable-default-apps", true),
+
+		chromedp.Flag("safebrowsing-disable-auto-update", true),
+		chromedp.Flag("disable-client-side-phishing-detection", true),
+
+		chromedp.Flag("disable-hang-monitor", true),
+		chromedp.Flag("disable-renderer-backgrounding", true),
+		chromedp.Flag("disable-ipc-flooding-protection", true),
+		chromedp.Flag("disable-background-timer-throttling", true),
+		chromedp.Flag("disable-backgrounding-occluded-windows", true),
+
+		chromedp.Flag("disable-features", "site-per-process,Translate"),
+		chromedp.Flag("enable-features", "NetworkService,NetworkServiceInProcess"),
+
+		chromedp.Flag("use-mock-keychain", true),
+
+		// Our customizations
+
+		chromedp.Flag("user-data-dir", userDataDir),
+
+		chromedp.Flag("headless", !options.headful),
+		chromedp.Flag("start-maximized", options.headful),
+
+		// https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+
+		chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
+			logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
+				append([]string{cmd.Path}, cmd.Args...)))
+		}),
+	}
+
+	if util.IsContainer() {
+		allocatorOptions = append(allocatorOptions,
+			// FIXME(konishchev): disable-dev-shm-usage?
+			chromedp.Flag("no-sandbox", true),
+			chromedp.Flag("use-gl", "angle"),
+			chromedp.Flag("use-angle", "swiftshader"))
+	}
+
+	allocatorContext, cancelAllocator := chromedp.NewExecAllocator(ctx, allocatorOptions...)
+	closers = append(closers, cancelAllocator)
+
+	return allocatorContext, close, nil
 }
 
 func getUserDataDir(persistent mo.Option[string]) (string, func(ctx context.Context), error) {
@@ -382,7 +368,7 @@ func getUserAgent(ctx context.Context) (_ string, retErr error) {
 
 	server := http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(r.Header.Get("User-Agent")))
+			_, _ = io.WriteString(w, r.Header.Get("User-Agent"))
 		}),
 	}
 	defer func() {
