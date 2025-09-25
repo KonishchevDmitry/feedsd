@@ -76,16 +76,48 @@ func Configure(ctx context.Context, opts ...Option) (retCtx context.Context, _ f
 	}
 	closers = append(closers, cancelAllocator)
 
-	browserCtx, cancelBrowser := chromedp.NewContext(allocatorContext, chromedp.WithLogf(func(format string, args ...any) {
-		logging.L(ctx).Debugf("Browser: "+format, args...)
-	}))
+	browserOptions := []chromedp.ContextOption{
+		chromedp.WithLogf(func(format string, args ...any) {
+			logging.L(ctx).Debugf("Browser: "+format, args...)
+		}),
+	}
+
+	browserCtx, cancelBrowser := chromedp.NewContext(allocatorContext, browserOptions...)
 	closers = append(closers, cancelBrowser)
 
-	// [ Start the browser ], connect to it and initialize the context
 	var userAgent string
 	if err := chromedp.Run(browserCtx, chromedp.Evaluate(
-		`navigator.userAgent`, &userAgent,
+		"navigator.userAgent", &userAgent,
 	)); err != nil {
+		return ctx, nil, err
+	}
+
+	requiredBrowserName := "Chrome"
+	if match := userAgentRe.FindStringSubmatch(userAgent); len(match) != 0 &&
+		match[2] == "Headless"+requiredBrowserName && options.remote.IsAbsent() {
+		// User-Agent can be easily set via emulation.SetUserAgentOverride(), but it drops all Sec-Ch-Ua* headers and
+		// potentially some other fields which may trigger bot detection algorithms. So we use less convenient, but more
+		// safe approach by restarting the browser with the desired User-Agent.
+		logging.L(ctx).Debugf("Restarting the browser with non-headless User-Agent...")
+		userAgent = fmt.Sprintf("%s%s%s", match[1], requiredBrowserName, match[3])
+
+		stop()
+		closers = nil
+
+		allocatorContext, cancelAllocator, err = configureExecAllocator(ctx, options, chromedp.UserAgent(userAgent))
+		if err != nil {
+			return ctx, nil, err
+		}
+		closers = append(closers, cancelAllocator)
+
+		browserCtx, cancelBrowser = chromedp.NewContext(allocatorContext, browserOptions...)
+		closers = append(closers, cancelBrowser)
+	} else if len(match) == 0 || match[2] != requiredBrowserName {
+		return ctx, nil, fmt.Errorf("the browser has an unexpected User-Agent: %q", userAgent)
+	}
+
+	// [ Start the browser ], connect to it and initialize the context
+	if err := chromedp.Run(browserCtx); err != nil {
 		return ctx, nil, err
 	}
 	closers = append(closers, func() {
@@ -96,24 +128,16 @@ func Configure(ctx context.Context, opts ...Option) (retCtx context.Context, _ f
 		}
 	})
 
-	requiredBrowserName := "Chrome"
-	if match := userAgentRe.FindStringSubmatch(userAgent); len(match) == 0 ||
-		(match[2] != requiredBrowserName && match[2] != "Headless"+requiredBrowserName) {
-		return ctx, nil, fmt.Errorf("the browser has an unexpected User-Agent: %q", userAgent)
-	} else if match[2] != requiredBrowserName {
-		userAgent = fmt.Sprintf("%s%s%s", match[1], requiredBrowserName, match[3])
-	}
-
 	browserCtx = context.WithValue(browserCtx, contextKey{}, &configurationContext{
-		userAgent: userAgent,
+		headful: options.remote.IsPresent() || options.headful,
 	})
 
 	if actualUserAgent, err := getUserAgent(browserCtx); err != nil {
 		return ctx, nil, err
 	} else if actualUserAgent != userAgent {
 		return ctx, nil, fmt.Errorf(
-			"failed to set browser User-Agent to %q: it actually uses %q",
-			userAgent, actualUserAgent)
+			"browser misconfiguration: it uses %q User-Agent when %q is expected",
+			actualUserAgent, userAgent)
 	}
 
 	return browserCtx, stop, nil
@@ -142,29 +166,34 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 	ctx, cancel := chromedp.NewContext(ctx)
 	defer cancel()
 
-	actions := []chromedp.Action{
-		// Please note: we shouldn't try hard to emulate a real browser here: it has tons of various exposed information
-		// which will be too hard to emulate properly. Moreover, these parameters sometimes very non-obviously tied to
-		// each other in terms of browser fingerprinting. For example https://fingerprint-scan.com/ has increased my bot
-		// risk score from to 20 to 80 just because I decided to set Accept-Language property.
-		//
-		// So it's better to use headful browser in VM instead of suffering with headless (especially with docker
-		// variant) if headless browser with basic tweaks doesn't serve your needs.
-
-		&emulation.SetDeviceMetricsOverrideParams{
+	var actions []chromedp.Action
+	// Please note: we shouldn't try too hard to emulate a real browser here: it has too many various exposed details
+	// which will be too hard to emulate properly.
+	//
+	// It turns out to be even harder than it could be, because by overriding some option you may actually reset some
+	// others. For example, emulation.SetUserAgentOverride() drops Sec-Ch-Ua* headers which may trigger bot detection
+	// algorithms.
+	//
+	// Moreover, these parameters sometimes very non-obviously tied to each other in terms of browser fingerprinting.
+	// For example https://fingerprint-scan.com/ has increased my bot risk score from to 20 to 80 when I just tried to
+	// set Accept-Language property to some real value.
+	//
+	// So it's better to use headful browser in VM instead of suffering with headless (especially with docker variant)
+	// if headless browser with basic tweaks doesn't serve our needs.
+	if !configurationContext.headful {
+		actions = append(actions, &emulation.SetDeviceMetricsOverrideParams{
 			Width:  viewportWidth,
 			Height: viewportHeight,
 
 			ScreenWidth:  screenWidth,
 			ScreenHeight: screenHeight,
-		},
-		// FIXME(konishchev): Sec-Ch-Ua*
-		emulation.SetUserAgentOverride(configurationContext.userAgent),
-		emulation.SetTimezoneOverride("Europe/Moscow"),
+		})
+	}
 
+	actions = append(actions,
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
-	}
+	)
 
 	if duration := options.sleep; duration != 0 {
 		actions = append(actions, chromedp.Sleep(duration))
@@ -218,7 +247,9 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 	}, nil
 }
 
-func configureExecAllocator(ctx context.Context, options options) (_ context.Context, _ func(), retErr error) {
+func configureExecAllocator(
+	ctx context.Context, options options, execOptions ...chromedp.ExecAllocatorOption,
+) (_ context.Context, _ func(), retErr error) {
 	var closers []func()
 	close := func() {
 		for _, close := range slices.Backward(closers) {
@@ -289,7 +320,6 @@ func configureExecAllocator(ctx context.Context, options options) (_ context.Con
 				append([]string{cmd.Path}, cmd.Args[1:]...)))
 		}),
 	}
-
 	if util.IsContainer() {
 		allocatorOptions = append(allocatorOptions,
 			// FIXME(konishchev): disable-dev-shm-usage?
@@ -297,6 +327,7 @@ func configureExecAllocator(ctx context.Context, options options) (_ context.Con
 			chromedp.Flag("use-gl", "angle"),
 			chromedp.Flag("use-angle", "swiftshader"))
 	}
+	allocatorOptions = append(allocatorOptions, execOptions...)
 
 	allocatorContext, cancelAllocator := chromedp.NewExecAllocator(ctx, allocatorOptions...)
 	closers = append(closers, cancelAllocator)

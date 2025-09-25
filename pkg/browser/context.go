@@ -3,7 +3,7 @@ package browser
 import "context"
 
 type configurationContext struct {
-	userAgent string
+	headful bool
 }
 
 type contextKey struct{}
