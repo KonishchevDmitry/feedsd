@@ -143,6 +143,14 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 	defer cancel()
 
 	actions := []chromedp.Action{
+		// Please note: we shouldn't try hard to emulate a real browser here: it has tons of various exposed information
+		// which will be too hard to emulate properly. Moreover, these parameters sometimes very non-obviously tied to
+		// each other in terms of browser fingerprinting. For example https://fingerprint-scan.com/ has increased my bot
+		// risk score from to 20 to 80 just because I decided to set Accept-Language property.
+		//
+		// So it's better to use headful browser in VM instead of suffering with headless (especially with docker
+		// variant) if headless browser with basic tweaks doesn't serve your needs.
+
 		&emulation.SetDeviceMetricsOverrideParams{
 			Width:  viewportWidth,
 			Height: viewportHeight,
@@ -150,7 +158,9 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 			ScreenWidth:  screenWidth,
 			ScreenHeight: screenHeight,
 		},
+		// FIXME(konishchev): Sec-Ch-Ua*
 		emulation.SetUserAgentOverride(configurationContext.userAgent),
+		emulation.SetTimezoneOverride("Europe/Moscow"),
 
 		chromedp.Navigate(url.String()),
 		chromedp.WaitVisible("body", chromedp.ByQuery),
@@ -276,7 +286,7 @@ func configureExecAllocator(ctx context.Context, options options) (_ context.Con
 
 		chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
 			logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
-				append([]string{cmd.Path}, cmd.Args...)))
+				append([]string{cmd.Path}, cmd.Args[1:]...)))
 		}),
 	}
 
