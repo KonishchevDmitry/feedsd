@@ -54,18 +54,22 @@ func HTML(ctx context.Context, url *url.URL, options ...Option) (*goquery.Docume
 func Description(
 	ctx context.Context, url *url.URL, baseURL *url.URL, parser func(doc *goquery.Document) (*goquery.Selection, error),
 	options ...Option,
-) (string, error) {
-	selection, err := func() (*goquery.Selection, error) {
-		doc, err := HTML(ctx, url, options...)
-		if err != nil {
-			return nil, err
-		}
-		return parser(doc)
-	}()
+) (_ string, retErr error) {
+	doc, err := HTML(ctx, url, options...)
 	if err != nil {
-		// FIXME(konishchev): Implement degrade mode
-		return fmt.Sprintf("Failed to fetch description from %s: %s.", url, err), nil
+		return "", err
 	}
+	defer func() {
+		if retErr != nil {
+			retErr = fmt.Errorf("failed to fetch description from %s: %w", url, err)
+		}
+	}()
+
+	selection, err := parser(doc)
+	if err != nil {
+		return "", err
+	}
+
 	return query.Description(selection, baseURL)
 }
 
