@@ -201,7 +201,9 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 
 	var body, html string
 	actions = append(actions,
-		// FIXME(konishchev): Try https://github.com/chromedp/examples/blob/master/download_image/main.go
+		// At this time this simple method of getting non-HTML body works good for us, but if there will be some problems
+		// in the future, we should try more complex method:
+		// https://github.com/chromedp/examples/blob/a363975bc138e67550290738cbf046ae10056c7c/download_image/main.go
 		chromedp.Evaluate("document.body.innerText", &body),
 		chromedp.OuterHTML("html", &html),
 	)
