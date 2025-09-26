@@ -1,8 +1,9 @@
 package fetch
 
 import (
-	"github.com/KonishchevDmitry/feedsd/pkg/browser"
 	"github.com/samber/mo"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/browser"
 )
 
 type Option func(o *options)

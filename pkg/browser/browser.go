@@ -20,12 +20,13 @@ import (
 	"unicode"
 
 	"al.essio.dev/pkg/shellescape"
-	"github.com/KonishchevDmitry/feedsd/internal/util"
-	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
 	"github.com/samber/mo"
+
+	"github.com/KonishchevDmitry/feedsd/internal/util"
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
 
 const (
@@ -375,7 +376,6 @@ func getUserDataDir(persistent mo.Option[string]) (string, func(ctx context.Cont
 
 			break
 		}
-
 	}, nil
 }
 
@@ -409,7 +409,7 @@ func getUserAgent(ctx context.Context) (_ string, retErr error) {
 		}
 	}()
 
-	server := http.Server{
+	server := http.Server{ //nolint:gosec
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, r.Header.Get("User-Agent"))
 		}),

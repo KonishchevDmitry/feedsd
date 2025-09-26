@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/browser"
 	logging "github.com/KonishchevDmitry/go-easy-logging"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/browser"
 )
 
 func fetch[T any](
@@ -89,7 +90,7 @@ func httpClientFetch(ctx context.Context, url *url.URL) (*fetchResult, error) {
 	}
 	request.Header.Add("User-Agent", "github.com/KonishchevDmitry/feedsd")
 
-	response, err := client.Do(request)
+	response, err := client.Do(request) //nolint:bodyclose
 	if err != nil {
 		return nil, makeTemporaryError(err)
 	}

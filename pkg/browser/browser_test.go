@@ -10,17 +10,19 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/KonishchevDmitry/feedsd/pkg/rss"
-	"github.com/KonishchevDmitry/feedsd/pkg/test/testutil"
-	"github.com/KonishchevDmitry/feedsd/pkg/url"
 	"github.com/MakeNowJust/heredoc"
 	"github.com/chromedp/chromedp"
 	"github.com/stretchr/testify/require"
+
+	"github.com/KonishchevDmitry/feedsd/pkg/rss"
+	"github.com/KonishchevDmitry/feedsd/pkg/test/testutil"
+	"github.com/KonishchevDmitry/feedsd/pkg/url"
 )
 
 func TestGet(t *testing.T) {
@@ -299,7 +301,7 @@ func TestChromedpDefaults(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			var args []string
-			options := append(c.options, chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
+			options := append(slices.Clone(c.options), chromedp.ModifyCmdFunc(func(cmd *exec.Cmd) {
 				cmd.Path = "/bin/false"
 				args = cmd.Args[1:]
 			}))
