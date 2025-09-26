@@ -4,6 +4,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	feedStatusSuccess     = "success"
+	feedStatusUnavailable = "unavailable"
+	feedStatusError       = "error"
+	feedStatusPanic       = "panic"
+)
+
 type metrics struct {
 	startTime      *prometheus.GaugeVec
 	feedTime       *prometheus.GaugeVec

@@ -1,9 +1,12 @@
 package scraper
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -135,22 +138,32 @@ func (s *Scraper) daemon(ctx context.Context, develMode bool) {
 
 func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
 	ctx = fetch.WithContext(ctx, s.metrics.fetchDuration)
-
 	logging.L(ctx).Infof("Scraping %q feed...", s.feed.Name())
 
+	var panicErr error
 	startTime := time.Now()
-	feed, err := s.feed.Get(ctx)
+	feed, err := func() (*rss.Feed, error) {
+		defer func() {
+			if err := recover(); err != nil {
+				stack := debug.Stack()
+				panicErr = fmt.Errorf("feed generator has panicked: %v\n%s", err, bytes.TrimRight(stack, "\n"))
+			}
+		}()
+		return s.feed.Get(ctx)
+	}()
 	s.metrics.scrapeDuration.Observe(time.Since(startTime).Seconds())
 
-	if err != nil {
-		if util.IsTemporaryError(err) {
-			logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
-			s.metrics.feedStatus.WithLabelValues("unavailable").Inc()
-			return makeErrorResult(http.StatusGatewayTimeout)
-		}
-
+	if panicErr != nil {
+		logging.L(ctx).Errorf("Failed to scrape %q feed: %s", s.feed.Name(), panicErr)
+		s.metrics.feedStatus.WithLabelValues(feedStatusPanic).Inc()
+		return makeErrorResult(http.StatusInternalServerError)
+	} else if util.IsTemporaryError(err) {
+		logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
+		s.metrics.feedStatus.WithLabelValues(feedStatusUnavailable).Inc()
+		return makeErrorResult(http.StatusGatewayTimeout)
+	} else if err != nil {
 		logging.L(ctx).Errorf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
-		s.metrics.feedStatus.WithLabelValues("error").Inc()
+		s.metrics.feedStatus.WithLabelValues(feedStatusError).Inc()
 		return makeErrorResult(http.StatusBadGateway)
 	}
 
@@ -160,12 +173,12 @@ func (s *Scraper) scrape(ctx context.Context) ScrapeResult {
 	data, err := rss.Generate(feed)
 	if err != nil {
 		logging.L(ctx).Errorf("Failed to render %s RSS feed: %s.", s.feed.Name(), err)
-		s.metrics.feedStatus.WithLabelValues("error").Inc()
+		s.metrics.feedStatus.WithLabelValues(feedStatusError).Inc()
 		return makeErrorResult(http.StatusInternalServerError)
 	}
 
 	s.metrics.feedTime().SetToCurrentTime()
-	s.metrics.feedStatus.WithLabelValues("success").Inc()
+	s.metrics.feedStatus.WithLabelValues(feedStatusSuccess).Inc()
 	return makeScrapeResult(http.StatusOK, rss.ContentType, data)
 }
 
