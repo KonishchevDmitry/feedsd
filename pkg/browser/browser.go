@@ -322,10 +322,10 @@ func configureExecAllocator(
 	}
 	if util.IsContainer() {
 		allocatorOptions = append(allocatorOptions,
-			// FIXME(konishchev): disable-dev-shm-usage?
 			chromedp.Flag("no-sandbox", true),
 			chromedp.Flag("use-gl", "angle"),
-			chromedp.Flag("use-angle", "swiftshader"))
+			chromedp.Flag("use-angle", "swiftshader"),
+		)
 	}
 	allocatorOptions = append(allocatorOptions, execOptions...)
 
