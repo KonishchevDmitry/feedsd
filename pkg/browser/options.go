@@ -54,7 +54,8 @@ func PersistentData(daemonName string) Option {
 }
 
 type queryOptions struct {
-	sleep time.Duration
+	sleep          time.Duration
+	modifyResponse mo.Option[func(response *Response)]
 }
 
 type QueryOption func(o *queryOptions)
@@ -62,5 +63,11 @@ type QueryOption func(o *queryOptions)
 func Sleep(duration time.Duration) QueryOption {
 	return func(o *queryOptions) {
 		o.sleep = duration
+	}
+}
+
+func ModifyResponse(modifyResponse func(response *Response)) QueryOption {
+	return func(o *queryOptions) {
+		o.modifyResponse = mo.Some(modifyResponse)
 	}
 }

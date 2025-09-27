@@ -197,7 +197,9 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 	)
 
 	if duration := options.sleep; duration != 0 {
-		actions = append(actions, chromedp.Sleep(duration))
+		actions = append(actions,
+			chromedp.Sleep(duration),
+			chromedp.WaitVisible("body", chromedp.ByQuery))
 	}
 
 	var body, html string
@@ -241,13 +243,19 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 		}
 	}
 
-	return &Response{
+	result := &Response{
 		URL:         response.URL,
 		StatusCode:  int(response.Status),
 		StatusText:  response.StatusText,
 		ContentType: contentType,
 		Body:        body,
-	}, nil
+	}
+
+	if modifyResponse, ok := options.modifyResponse.Get(); ok {
+		modifyResponse(result)
+	}
+
+	return result, nil
 }
 
 func configureExecAllocator(
