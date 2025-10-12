@@ -1,6 +1,9 @@
 package filter
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const sectionDelimiter = " :: "
 
@@ -16,5 +19,24 @@ func (b Blacklist) IsBlacklisted(category string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+type JointBlacklist [][]string
+
+func (b JointBlacklist) IsBlacklisted(categories []string) bool {
+BlacklistLoop:
+	for _, blacklist := range b {
+		for _, blacklisted := range blacklist {
+			if !slices.Contains(categories, blacklisted) {
+				continue BlacklistLoop
+			}
+		}
+
+		if len(blacklist) != 0 {
+			return true
+		}
+	}
+
 	return false
 }
