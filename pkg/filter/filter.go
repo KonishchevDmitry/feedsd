@@ -22,6 +22,10 @@ func (b Blacklist) IsBlacklisted(category string) bool {
 	return false
 }
 
+func (b Blacklist) HasBlacklisted(categories []string) bool {
+	return slices.ContainsFunc(categories, b.IsBlacklisted)
+}
+
 type JointBlacklist [][]string
 
 func (b JointBlacklist) IsBlacklisted(categories []string) bool {

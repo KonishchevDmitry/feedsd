@@ -46,13 +46,14 @@ func (f *Feed) Filter(filter func(item *Item) bool) {
 
 func (f *Feed) BlockCategories(blacklist filter.Blacklist) {
 	f.Filter(func(item *Item) bool {
-		for _, category := range item.Categories {
-			if blacklist.IsBlacklisted(category) {
-				return false
-			}
-		}
-		return true
+		return !blacklist.HasBlacklisted(item.Categories)
 	})
+}
+
+func (f *Feed) AddCategoriesToDescription() {
+	for _, item := range f.Items {
+		item.AddCategoriesToDescription()
+	}
 }
 
 func (f *Feed) Deduplicate() {
