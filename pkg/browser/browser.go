@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 
 	"al.essio.dev/pkg/shellescape"
@@ -330,6 +331,9 @@ func configureExecAllocator(
 			logging.L(ctx).Debugf("Starting the browser: %s", shellescape.QuoteCommand(
 				append([]string{cmd.Path}, cmd.Args[1:]...)))
 		}),
+
+		// During OS startup system disk is overloaded and browser may start longer than the default timeout
+		chromedp.WSURLReadTimeout(time.Minute),
 	}
 	if util.IsContainer() {
 		allocatorOptions = append(allocatorOptions,
