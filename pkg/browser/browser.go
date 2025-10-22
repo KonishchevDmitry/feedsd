@@ -212,9 +212,20 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 		chromedp.OuterHTML("html", &html),
 	)
 
+	var screenshot []byte
+	if options.screenshot.IsSome() {
+		actions = append(actions, chromedp.FullScreenshot(&screenshot, 100))
+	}
+
 	response, err := chromedp.RunResponse(ctx, actions...)
 	if err != nil {
 		return nil, err
+	}
+
+	if path, ok := options.screenshot.Get(); ok {
+		if err = os.WriteFile(path, screenshot, 0600); err != nil {
+			return nil, err
+		}
 	}
 
 	var contentType string
