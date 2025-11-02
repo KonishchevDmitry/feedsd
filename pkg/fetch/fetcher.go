@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -137,11 +138,9 @@ func checkContentType(contentType string, allowedMediaTypes []string) error {
 		return fmt.Errorf("got an invalid Content-Type: %w", err)
 	}
 
-	for _, allowedMediaType := range allowedMediaTypes {
-		if mediaType == allowedMediaType {
-			return nil
-		}
+	if !slices.Contains(allowedMediaTypes, mediaType) {
+		return fmt.Errorf("got an invalid Content-Type (%s)", mediaType)
 	}
 
-	return fmt.Errorf("got an invalid Content-Type (%s)", mediaType)
+	return nil
 }

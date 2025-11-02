@@ -44,7 +44,7 @@ func newPrometheusLogger(logger *zap.SugaredLogger) *prometheusLogger {
 
 var _ promhttp.Logger = prometheusLogger{}
 
-func (l prometheusLogger) Println(v ...interface{}) {
+func (l prometheusLogger) Println(v ...any) {
 	level := zapcore.ErrorLevel
 
 	for _, value := range v {

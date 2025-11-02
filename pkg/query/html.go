@@ -28,7 +28,7 @@ func Classes(selection *goquery.Selection) ([]string, error) {
 
 	for _, attr := range selection.Nodes[0].Attr {
 		if attr.Key == "class" {
-			for _, class := range strings.Split(attr.Val, " ") {
+			for class := range strings.SplitSeq(attr.Val, " ") {
 				if class != "" {
 					classes = append(classes, class)
 				}
