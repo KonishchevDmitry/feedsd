@@ -1,6 +1,26 @@
 package fetch
 
-import "github.com/KonishchevDmitry/feedsd/internal/util"
+import (
+	"fmt"
+
+	"github.com/KonishchevDmitry/feedsd/internal/util"
+)
+
+type HTTPStatusError struct {
+	Status  int
+	message string
+}
+
+func newHTTPStatusError(status int, format string, args ...any) *HTTPStatusError {
+	return &HTTPStatusError{
+		Status:  status,
+		message: fmt.Sprintf(format, args...),
+	}
+}
+
+func (e *HTTPStatusError) Error() string {
+	return e.message
+}
 
 type temporaryError struct {
 	error error

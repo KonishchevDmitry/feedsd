@@ -61,7 +61,7 @@ func fetch[T any](
 	}()
 
 	if statusCode := response.StatusCode; statusCode != http.StatusOK {
-		err := fmt.Errorf("the server returned an error: %d %s", statusCode, response.StatusText)
+		err := error(newHTTPStatusError(statusCode, "the server returned an error: %s", response.StatusText))
 		if statusCode >= 500 && statusCode < 600 {
 			err = makeTemporaryError(err)
 		}
