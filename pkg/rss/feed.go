@@ -130,6 +130,7 @@ type Item struct {
 	GUID         GUID            `xml:"guid"`
 	Link         string          `xml:"link,omitempty"`
 	Description  string          `xml:"description,omitempty"`
+	Content      string          `xml:"http://purl.org/rss/1.0/modules/content/ encoded,omitempty"`
 	Enclosure    []*Enclosure    `xml:"enclosure"`
 	MediaContent []*MediaContent `xml:"http://search.yahoo.com/mrss/ content"`
 	MediaGroup   []*MediaGroup   `xml:"http://search.yahoo.com/mrss/ group"`

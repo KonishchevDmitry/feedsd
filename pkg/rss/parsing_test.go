@@ -48,6 +48,7 @@ func TestParseFull(t *testing.T) {
                     <guid isPermaLink="true">http://example.com/item1</guid>
                     <link>http://example.com/item1</link>
                     <description>Item 1 description</description>
+                    <encoded xmlns="http://purl.org/rss/1.0/modules/content/">Item 1 content</encoded>
                     <enclosure url="http://example.com/item1/podcast.mp3" type="audio/mpeg" length="123456789"></enclosure>
                     <comments>http://example.com/item1/comments</comments>
                     <pubDate>Sat, 04 Apr 2015 07:00:13 GMT</pubDate>
