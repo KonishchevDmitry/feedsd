@@ -39,14 +39,17 @@ func Feed(t *testing.T, generator feed.Feed, opts ...Option) {
 		require.NotEmpty(t, feed.Items)
 	}
 
-	for _, item := range feed.Items {
-		require.NotEmpty(t, item.Description)
+	if !options.mayHaveEmptyDescription {
+		for _, item := range feed.Items {
+			require.NotEmpty(t, item.Description)
+		}
 	}
 }
 
 type options struct {
-	mayBeEmpty   bool
-	needsBrowser bool
+	mayBeEmpty              bool
+	mayHaveEmptyDescription bool
+	needsBrowser            bool
 }
 
 type Option func(o *options)
@@ -54,6 +57,12 @@ type Option func(o *options)
 func MayBeEmpty() Option {
 	return func(o *options) {
 		o.mayBeEmpty = true
+	}
+}
+
+func MayHaveEmptyDescription() Option {
+	return func(o *options) {
+		o.mayHaveEmptyDescription = true
 	}
 }
 
