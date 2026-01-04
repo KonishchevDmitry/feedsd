@@ -44,6 +44,19 @@ func (f *Feed) Filter(filter func(item *Item) bool) {
 	})
 }
 
+func (f *Feed) FilterMap(mapper func(item *Item) (*Item, bool)) {
+	var count int
+
+	for _, item := range f.Items {
+		if item, ok := mapper(item); ok {
+			f.Items[count] = item
+			count++
+		}
+	}
+
+	f.Items = f.Items[:count]
+}
+
 func (f *Feed) BlockCategories(blacklist filter.Blacklist) {
 	f.Filter(func(item *Item) bool {
 		return !blacklist.HasBlacklisted(item.Categories)
