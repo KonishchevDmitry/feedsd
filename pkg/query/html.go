@@ -12,7 +12,7 @@ import (
 )
 
 func HTMLOrError(selection *goquery.Selection) string {
-	html, err := selection.Html()
+	html, err := goquery.OuterHtml(selection)
 	if err != nil {
 		html = fmt.Sprintf("[Failed to render the HTML: %s]", err)
 	}
