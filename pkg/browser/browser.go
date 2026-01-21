@@ -189,6 +189,9 @@ func Get(ctx context.Context, url *url.URL, opts ...QueryOption) (*Response, err
 
 			ScreenWidth:  screenWidth,
 			ScreenHeight: screenHeight,
+
+			// Some sites use smaller images on non-high DPI displays, so report ourselves as high DPI
+			DeviceScaleFactor: 2,
 		})
 	}
 
