@@ -19,7 +19,7 @@ import (
 )
 
 func HTML(ctx context.Context, url *url.URL, options ...Option) (*goquery.Document, error) {
-	return fetch(ctx, url, []string{"text/html"}, func(body io.Reader) (*goquery.Document, error) {
+	return fetch(ctx, url, []string{"text/html"}, func(body io.Reader, ignoreCharset bool) (*goquery.Document, error) {
 		data, err := io.ReadAll(body)
 		if err != nil {
 			return nil, err
@@ -30,20 +30,22 @@ func HTML(ctx context.Context, url *url.URL, options ...Option) (*goquery.Docume
 			return nil, err
 		}
 
-		if encoding, ok := getHTMLCharset(ctx, doc, url); ok && encoding != "utf-8" && encoding != "utf8" {
-			charsetReader, err := charset.NewReaderLabel(encoding, bytes.NewReader(data))
-			if err != nil {
-				return nil, fmt.Errorf("the document has an unknown charset encoding: %q", encoding)
-			}
+		if !ignoreCharset {
+			if encoding, ok := getHTMLCharset(ctx, doc, url); ok && encoding != "utf-8" && encoding != "utf8" {
+				charsetReader, err := charset.NewReaderLabel(encoding, bytes.NewReader(data))
+				if err != nil {
+					return nil, fmt.Errorf("the document has an unknown charset encoding: %q", encoding)
+				}
 
-			data, err = io.ReadAll(charsetReader)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode the document using %s charset: %w", encoding, err)
-			}
+				data, err = io.ReadAll(charsetReader)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode the document using %s charset: %w", encoding, err)
+				}
 
-			doc, err = html.Parse(bytes.NewReader(data))
-			if err != nil {
-				return nil, err
+				doc, err = html.Parse(bytes.NewReader(data))
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 

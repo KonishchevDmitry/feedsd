@@ -18,7 +18,8 @@ import (
 )
 
 func fetch[T any](
-	ctx context.Context, url *url.URL, allowedMediaTypes []string, parser func(body io.Reader) (T, error),
+	ctx context.Context, url *url.URL, allowedMediaTypes []string,
+	parser func(body io.Reader, ignoreCharset bool) (T, error),
 	opts ...Option,
 ) (_ T, retErr error) {
 	var zero T
@@ -43,9 +44,13 @@ func fetch[T any](
 
 	logging.L(ctx).Debugf("Fetching %s (emulate browser = %v)...", url, options.emulateBrowser.IsPresent())
 
-	var response *fetchResult
-	startTime := time.Now()
+	var (
+		ignoreCharset bool
+		response      *fetchResult
+		startTime     = time.Now()
+	)
 	if queryOptions, ok := options.emulateBrowser.Get(); ok {
+		ignoreCharset = true // Browser does all the decoding for us, but doesn't change HTML/XML charset attribute values
 		response, err = browserFetch(ctx, url, queryOptions...)
 	} else {
 		response, err = httpClientFetch(ctx, url)
@@ -72,7 +77,7 @@ func fetch[T any](
 		return zero, err
 	}
 
-	return parser(bodyReader{body: response.Body})
+	return parser(bodyReader{body: response.Body}, ignoreCharset)
 }
 
 type fetchResult struct {

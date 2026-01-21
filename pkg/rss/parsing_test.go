@@ -132,7 +132,7 @@ func TestReadRss091WithCustomEncoding(t *testing.T) {
 		require.NoError(t, file.Close())
 	}()
 
-	feed, err := Read(file)
+	feed, err := Read(file, false)
 	require.NoError(t, err)
 
 	require.Equal(t, "Свежачок от LostFilm.TV", feed.Description)

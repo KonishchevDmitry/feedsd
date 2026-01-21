@@ -14,12 +14,17 @@ const ContentType = "application/rss+xml"
 
 var PossibleContentTypes = []string{ContentType, "application/xml", "text/xml"}
 
-func Read(reader io.Reader) (*Feed, error) {
+func Read(reader io.Reader, ignoreCharset bool) (*Feed, error) {
 	rss := rssRoot{}
 
 	decoder := xml.NewDecoder(reader)
 	decoder.Strict = false
-	decoder.CharsetReader = charset.NewReaderLabel
+	decoder.CharsetReader = func(encoding string, input io.Reader) (io.Reader, error) {
+		if ignoreCharset {
+			return input, nil
+		}
+		return charset.NewReaderLabel(encoding, input)
+	}
 
 	if err := decoder.Decode(&rss); err != nil {
 		return nil, err
@@ -39,7 +44,7 @@ func Read(reader io.Reader) (*Feed, error) {
 }
 
 func Parse(data []byte) (*Feed, error) {
-	return Read(bytes.NewReader(data))
+	return Read(bytes.NewReader(data), false)
 }
 
 func Write(feed *Feed, writer io.Writer) error {
