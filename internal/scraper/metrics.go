@@ -50,25 +50,33 @@ func makeMetrics() metrics {
 	}
 }
 
-type observers struct {
-	startTime      func() prometheus.Gauge
-	feedTime       func() prometheus.Gauge
+type baseObservers struct {
 	feedStatus     *prometheus.CounterVec
 	fetchDuration  prometheus.Observer
 	scrapeDuration prometheus.Observer
 }
 
-func (m *metrics) observers(name string) observers {
-	return observers{
+func (m *metrics) baseObservers(name string) baseObservers {
+	return baseObservers{
+		feedStatus:     m.feedStatus.MustCurryWith(prometheus.Labels{"name": name}),
+		fetchDuration:  m.fetchDuration.WithLabelValues(name),
+		scrapeDuration: m.scrapeDuration.WithLabelValues(name),
+	}
+}
+
+type backgroundObservers struct {
+	startTime func() prometheus.Gauge
+	feedTime  func() prometheus.Gauge
+}
+
+func (m *metrics) backgroundObservers(name string) backgroundObservers {
+	return backgroundObservers{
 		startTime: func() prometheus.Gauge {
 			return m.startTime.WithLabelValues(name)
 		},
 		feedTime: func() prometheus.Gauge {
 			return m.feedTime.WithLabelValues(name)
 		},
-		feedStatus:     m.feedStatus.MustCurryWith(prometheus.Labels{"name": name}),
-		fetchDuration:  m.fetchDuration.WithLabelValues(name),
-		scrapeDuration: m.scrapeDuration.WithLabelValues(name),
 	}
 }
 

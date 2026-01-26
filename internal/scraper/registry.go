@@ -9,24 +9,25 @@ import (
 )
 
 type Registry struct {
-	scrapers map[string]*Scraper
+	// FIXME(konishchev): Add simple scrapers
+	scrapers map[string]*BackgroundScraper
 	metrics
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		scrapers: make(map[string]*Scraper),
+		scrapers: make(map[string]*BackgroundScraper),
 		metrics:  makeMetrics(),
 	}
 }
 
-func (r *Registry) Add(feed feed.Feed) (*Scraper, error) {
+func (r *Registry) Add(feed feed.Feed) (*BackgroundScraper, error) {
 	name := feed.Name()
 	if _, ok := r.scrapers[name]; ok {
 		return nil, fmt.Errorf("%q feed is already registered", name)
 	}
 
-	scraper := newScraper(feed, r.metrics.observers(name))
+	scraper := newBackgroundScraper(feed, &r.metrics)
 	r.scrapers[name] = scraper
 
 	return scraper, nil
