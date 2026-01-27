@@ -22,9 +22,40 @@ import (
 
 const scrapePeriod = time.Hour
 
+type SimpleScraper struct {
+	baseScraper
+}
+
+func newSimpleScraper(feed feed.Feed, metrics *baseObservers) *SimpleScraper {
+	return &SimpleScraper{
+		baseScraper: makeBaseScraper(feed, metrics),
+	}
+}
+
+func (s *SimpleScraper) Scrape(ctx context.Context) ScrapeResult {
+	return s.scrape(ctx)
+}
+
+type SimpleParametrizedScraper[P feed.Params] struct {
+	feed    feed.ParametrizedFeed[P]
+	metrics *baseObservers
+}
+
+func newSimpleParametrizedScraper[P feed.Params](feed feed.ParametrizedFeed[P], metrics *baseObservers) *SimpleParametrizedScraper[P] {
+	return &SimpleParametrizedScraper[P]{
+		feed:    feed,
+		metrics: metrics,
+	}
+}
+
+func (s *SimpleParametrizedScraper[P]) Scrape(ctx context.Context, params P) ScrapeResult {
+	boundFeed := feed.BindParams(s.feed, params)
+	return newSimpleScraper(boundFeed, s.metrics).scrape(ctx)
+}
+
 type BackgroundScraper struct {
 	baseScraper
-	backgroundMetrics backgroundObservers
+	backgroundMetrics *backgroundObservers
 
 	force     chan struct{}
 	stopped   chan struct{}
@@ -35,10 +66,10 @@ type BackgroundScraper struct {
 	waiters []chan<- ScrapeResult
 }
 
-func newBackgroundScraper(feed feed.Feed, metrics *metrics) *BackgroundScraper {
+func newBackgroundScraper(feed feed.Feed, baseMetrics *baseObservers, backgroundMetrics *backgroundObservers) *BackgroundScraper {
 	return &BackgroundScraper{
-		baseScraper:       makeBaseScraper(feed, metrics),
-		backgroundMetrics: metrics.backgroundObservers(feed.Name()),
+		baseScraper:       makeBaseScraper(feed, baseMetrics),
+		backgroundMetrics: backgroundMetrics,
 
 		force:   make(chan struct{}, 1),
 		stopped: make(chan struct{}),
@@ -141,13 +172,13 @@ func (s *BackgroundScraper) daemon(ctx context.Context, develMode bool) {
 
 type baseScraper struct {
 	feed        feed.Feed
-	baseMetrics baseObservers
+	baseMetrics *baseObservers
 }
 
-func makeBaseScraper(feed feed.Feed, metrics *metrics) baseScraper {
+func makeBaseScraper(feed feed.Feed, metrics *baseObservers) baseScraper {
 	return baseScraper{
 		feed:        feed,
-		baseMetrics: metrics.baseObservers(feed.Name()),
+		baseMetrics: metrics,
 	}
 }
 

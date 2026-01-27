@@ -56,8 +56,8 @@ type baseObservers struct {
 	scrapeDuration prometheus.Observer
 }
 
-func (m *metrics) baseObservers(name string) baseObservers {
-	return baseObservers{
+func (m *metrics) baseObservers(name string) *baseObservers {
+	return &baseObservers{
 		feedStatus:     m.feedStatus.MustCurryWith(prometheus.Labels{"name": name}),
 		fetchDuration:  m.fetchDuration.WithLabelValues(name),
 		scrapeDuration: m.scrapeDuration.WithLabelValues(name),
@@ -69,8 +69,8 @@ type backgroundObservers struct {
 	feedTime  func() prometheus.Gauge
 }
 
-func (m *metrics) backgroundObservers(name string) backgroundObservers {
-	return backgroundObservers{
+func (m *metrics) backgroundObservers(name string) *backgroundObservers {
+	return &backgroundObservers{
 		startTime: func() prometheus.Gauge {
 			return m.startTime.WithLabelValues(name)
 		},
