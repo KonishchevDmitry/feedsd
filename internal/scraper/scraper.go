@@ -244,3 +244,9 @@ func makeScrapeResult(status int, contentType string, data []byte) ScrapeResult 
 func makeErrorResult(status int) ScrapeResult {
 	return makeScrapeResult(status, "text/plain", []byte("Failed to generate the RSS feed"))
 }
+
+func (r *ScrapeResult) Write(writer http.ResponseWriter) {
+	writer.Header().Set("Content-Type", r.ContentType)
+	writer.WriteHeader(r.HTTPStatus)
+	_, _ = writer.Write(r.Data)
+}

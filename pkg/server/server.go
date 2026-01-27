@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	logging "github.com/KonishchevDmitry/go-easy-logging"
+	"github.com/ggicci/httpin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -27,7 +28,9 @@ func New() *Server {
 		scrapers: scraper.NewRegistry(),
 		feedsMux: http.NewServeMux(),
 	}
-	s.register("/", http.NotFound)
+	s.register("/", func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
+		http.NotFound(writer, request)
+	})
 	return s
 }
 
@@ -37,16 +40,35 @@ func (s *Server) Register(feed feed.Feed) error {
 		return err
 	}
 
-	s.register(fmt.Sprintf("/%s.rss", feed.Name()), func(w http.ResponseWriter, r *http.Request) {
-		response := scraper.Get(r.Context())
-		w.Header().Set("Content-Type", response.ContentType)
-		w.WriteHeader(response.HTTPStatus)
-		_, _ = w.Write(response.Data)
+	s.register(fmt.Sprintf("/%s.rss", feed.Name()), func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
+		result := scraper.Get(ctx)
+		result.Write(writer)
 	})
 
 	return nil
 }
 
+func RegisterParametrized[P feed.Params](s *Server, feed feed.ParametrizedFeed[P]) error {
+	scraper, err := scraper.AddParametrized(s.scrapers, feed)
+	if err != nil {
+		return err
+	}
+
+	s.register(fmt.Sprintf("/%s.rss", feed.Name()), func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
+		params, err := httpin.Decode[P](request)
+		if err != nil {
+			// FIXME(konishchev): Handle it properly
+			logging.L(ctx).Warnf("Failed to decode parameters: %s.", err)
+			return
+		}
+
+		// FIXME(konishchev): Context cancellation + locks
+		result := scraper.Scrape(ctx, *params)
+		result.Write(writer)
+	})
+
+	return nil
+}
 func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode bool) error {
 	var waitGroup sync.WaitGroup
 	defer waitGroup.Wait()
@@ -137,11 +159,11 @@ func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string
 	return <-serverCrashed
 }
 
-func (s *Server) register(path string, handler func(http.ResponseWriter, *http.Request)) {
-	s.feedsMux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		logging.L(ctx).Debugf("%s %s...", r.Method, r.RequestURI)
-		handler(w, r)
-		logging.L(ctx).Debugf("%s %s finished.", r.Method, r.RequestURI)
+func (s *Server) register(path string, handler func(ctx context.Context, writer http.ResponseWriter, request *http.Request)) {
+	s.feedsMux.HandleFunc(path, func(writer http.ResponseWriter, request *http.Request) {
+		ctx := request.Context()
+		logging.L(ctx).Debugf("%s %s...", request.Method, request.RequestURI)
+		handler(ctx, writer, request)
+		logging.L(ctx).Debugf("%s %s finished.", request.Method, request.RequestURI)
 	})
 }
