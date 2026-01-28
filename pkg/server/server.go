@@ -7,10 +7,13 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	logging "github.com/KonishchevDmitry/go-easy-logging"
 	"github.com/ggicci/httpin"
+	"github.com/ggicci/httpin/integration"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -18,15 +21,19 @@ import (
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
 )
 
+func init() {
+	integration.UseGorillaMux("path", mux.Vars)
+}
+
 type Server struct {
+	router   *mux.Router
 	scrapers *scraper.Registry
-	feedsMux *http.ServeMux
 }
 
 func New() *Server {
 	s := &Server{
+		router:   mux.NewRouter(),
 		scrapers: scraper.NewRegistry(),
-		feedsMux: http.NewServeMux(),
 	}
 	s.register("/", func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
 		http.NotFound(writer, request)
@@ -54,11 +61,18 @@ func RegisterParametrized[P feed.Params](s *Server, feed feed.ParametrizedFeed[P
 		return err
 	}
 
-	s.register(fmt.Sprintf("/%s.rss", feed.Name()), func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
+	var path string
+	if subPath, ok := feed.Path(); ok {
+		path = fmt.Sprintf("/%s/%s", feed.Name(), strings.TrimPrefix(subPath, "/"))
+	} else {
+		path = fmt.Sprintf("/%s.rss", feed.Name())
+	}
+
+	s.register(path, func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
 		params, err := httpin.Decode[P](request)
 		if err != nil {
-			// FIXME(konishchev): Handle it properly
-			logging.L(ctx).Warnf("Failed to decode parameters: %s.", err)
+			logging.L(ctx).Warnf("Invalid feed parameters: %s.", err)
+			http.NotFound(writer, request)
 			return
 		}
 
@@ -69,6 +83,7 @@ func RegisterParametrized[P feed.Params](s *Server, feed feed.ParametrizedFeed[P
 
 	return nil
 }
+
 func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string, develMode bool) error {
 	var waitGroup sync.WaitGroup
 	defer waitGroup.Wait()
@@ -80,7 +95,7 @@ func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string
 	//nolint:gosec
 	feedsServer := http.Server{
 		Addr:     feedsAddr,
-		Handler:  s.feedsMux,
+		Handler:  s.router,
 		ErrorLog: log.New(newHTTPLogger(logging.L(ctx)), "Feeds HTTP server: ", 0),
 		BaseContext: func(net.Listener) context.Context {
 			return ctx
@@ -160,7 +175,7 @@ func (s *Server) Serve(ctx context.Context, feedsAddr string, metricsAddr string
 }
 
 func (s *Server) register(path string, handler func(ctx context.Context, writer http.ResponseWriter, request *http.Request)) {
-	s.feedsMux.HandleFunc(path, func(writer http.ResponseWriter, request *http.Request) {
+	s.router.HandleFunc(path, func(writer http.ResponseWriter, request *http.Request) {
 		ctx := request.Context()
 		logging.L(ctx).Debugf("%s %s...", request.Method, request.RequestURI)
 		handler(ctx, writer, request)

@@ -49,6 +49,8 @@ func newSimpleParametrizedScraper[P feed.Params](feed feed.ParametrizedFeed[P], 
 }
 
 func (s *SimpleParametrizedScraper[P]) Scrape(ctx context.Context, params P) ScrapeResult {
+	// FIXME(konishchev): Add params to feed name and drop this logging
+	logging.L(ctx).Infof("Scraping %s{%+v} feed...", s.feed.Name(), params)
 	boundFeed := feed.BindParams(s.feed, params)
 	return newSimpleScraper(boundFeed, s.metrics).scrape(ctx)
 }

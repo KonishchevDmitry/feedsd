@@ -16,6 +16,7 @@ type Params interface {
 
 type ParametrizedFeed[P Params] interface {
 	Name() string
+	Path() (string, bool)
 	Get(ctx context.Context, params P) (*rss.Feed, error)
 }
 
