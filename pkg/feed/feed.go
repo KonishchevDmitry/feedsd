@@ -2,6 +2,7 @@ package feed
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/KonishchevDmitry/feedsd/pkg/rss"
 )
@@ -12,6 +13,7 @@ type Feed interface {
 }
 
 type Params interface {
+	Format() string
 }
 
 type ParametrizedFeed[P Params] interface {
@@ -33,7 +35,7 @@ type bindParamsAdapter[P Params] struct {
 }
 
 func (a *bindParamsAdapter[P]) Name() string {
-	return a.feed.Name()
+	return fmt.Sprintf("%s(%s)", a.feed.Name(), a.params.Format())
 }
 
 func (a *bindParamsAdapter[P]) Get(ctx context.Context) (*rss.Feed, error) {

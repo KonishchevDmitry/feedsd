@@ -23,7 +23,6 @@ func NewRegistry() *Registry {
 
 func (r *Registry) Add(feed feed.Feed) (*BackgroundScraper, error) {
 	name := feed.Name()
-
 	if err := r.add(name); err != nil {
 		return nil, err
 	}
@@ -36,7 +35,6 @@ func (r *Registry) Add(feed feed.Feed) (*BackgroundScraper, error) {
 
 func AddParametrized[P feed.Params](r *Registry, feed feed.ParametrizedFeed[P]) (*SimpleParametrizedScraper[P], error) {
 	name := feed.Name()
-
 	if err := r.add(name); err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 )
 
 type URL = url.URL
+type Values = url.Values
 
 var Parse = url.Parse
 

@@ -49,8 +49,7 @@ func newSimpleParametrizedScraper[P feed.Params](feed feed.ParametrizedFeed[P], 
 }
 
 func (s *SimpleParametrizedScraper[P]) Scrape(ctx context.Context, params P) ScrapeResult {
-	// FIXME(konishchev): Add params to feed name and drop this logging
-	logging.L(ctx).Infof("Scraping %s{%+v} feed...", s.feed.Name(), params)
+	// Attention: Binding changes feed name, so be careful and construct metric observers before the binding
 	boundFeed := feed.BindParams(s.feed, params)
 	return newSimpleScraper(boundFeed, s.metrics).scrape(ctx)
 }
@@ -86,10 +85,10 @@ func (s *BackgroundScraper) start(ctx context.Context, develMode bool) {
 }
 
 func (s *BackgroundScraper) stop(ctx context.Context) {
-	logging.L(ctx).Infof("Stopping %q scrapper...", s.feed.Name())
+	logging.L(ctx).Infof("Stopping %s scrapper...", s.feed.Name())
 	close(s.stopped)
 	s.waitGroup.Wait()
-	logging.L(ctx).Infof("%q scrapper has stopped.", s.feed.Name())
+	logging.L(ctx).Infof("%s scrapper has stopped.", s.feed.Name())
 }
 
 func (s *BackgroundScraper) Get(ctx context.Context) ScrapeResult {
@@ -186,7 +185,7 @@ func makeBaseScraper(feed feed.Feed, metrics *baseObservers) baseScraper {
 
 func (s *baseScraper) scrape(ctx context.Context) ScrapeResult {
 	ctx = fetch.WithContext(ctx, s.baseMetrics.fetchDuration)
-	logging.L(ctx).Infof("Scraping %q feed...", s.feed.Name())
+	logging.L(ctx).Infof("Scraping %s feed...", s.feed.Name())
 
 	var panicErr error
 	startTime := time.Now()
@@ -202,20 +201,20 @@ func (s *baseScraper) scrape(ctx context.Context) ScrapeResult {
 	s.baseMetrics.scrapeDuration.Observe(time.Since(startTime).Seconds())
 
 	if panicErr != nil {
-		logging.L(ctx).Errorf("Failed to scrape %q feed: %s", s.feed.Name(), panicErr)
+		logging.L(ctx).Errorf("Failed to scrape %s feed: %s", s.feed.Name(), panicErr)
 		s.baseMetrics.feedStatus.WithLabelValues(feedStatusPanic).Inc()
 		return makeErrorResult(http.StatusInternalServerError)
 	} else if util.IsTemporaryError(err) {
-		logging.L(ctx).Warnf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
+		logging.L(ctx).Warnf("Failed to scrape %s feed: %s.", s.feed.Name(), err)
 		s.baseMetrics.feedStatus.WithLabelValues(feedStatusUnavailable).Inc()
 		return makeErrorResult(http.StatusGatewayTimeout)
 	} else if err != nil {
-		logging.L(ctx).Errorf("Failed to scrape %q feed: %s.", s.feed.Name(), err)
+		logging.L(ctx).Errorf("Failed to scrape %s feed: %s.", s.feed.Name(), err)
 		s.baseMetrics.feedStatus.WithLabelValues(feedStatusError).Inc()
 		return makeErrorResult(http.StatusBadGateway)
 	}
 
-	logging.L(ctx).Infof("%q feed scraped.", s.feed.Name())
+	logging.L(ctx).Infof("%s feed scraped.", s.feed.Name())
 	feed.Normalize()
 
 	data, err := rss.Generate(feed)
