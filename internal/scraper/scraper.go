@@ -33,6 +33,7 @@ func newSimpleScraper(feed feed.Feed, metrics *baseObservers) *SimpleScraper {
 }
 
 func (s *SimpleScraper) Scrape(ctx context.Context) ScrapeResult {
+	ctx = context.WithoutCancel(ctx) // We don't want to affect our scrape metrics by closed connections
 	return s.scrape(ctx)
 }
 
@@ -51,7 +52,7 @@ func newSimpleParametrizedScraper[P feed.Params](feed feed.ParametrizedFeed[P], 
 func (s *SimpleParametrizedScraper[P]) Scrape(ctx context.Context, params P) ScrapeResult {
 	// Attention: Binding changes feed name, so be careful and construct metric observers before the binding
 	boundFeed := feed.BindParams(s.feed, params)
-	return newSimpleScraper(boundFeed, s.metrics).scrape(ctx)
+	return newSimpleScraper(boundFeed, s.metrics).Scrape(ctx)
 }
 
 type BackgroundScraper struct {

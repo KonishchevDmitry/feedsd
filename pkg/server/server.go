@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/KonishchevDmitry/feedsd/internal/scraper"
 	"github.com/KonishchevDmitry/feedsd/pkg/feed"
@@ -56,16 +57,18 @@ func (s *Server) Register(feed feed.Feed) error {
 }
 
 func RegisterParametrized[P feed.Params](s *Server, feed feed.ParametrizedFeed[P]) error {
-	scraper, err := scraper.AddParametrized(s.scrapers, feed)
-	if err != nil {
-		return err
-	}
-
 	var path string
 	if subPath, ok := feed.Path(); ok {
 		path = fmt.Sprintf("/%s/%s", feed.Name(), strings.TrimPrefix(subPath, "/"))
 	} else {
 		path = fmt.Sprintf("/%s.rss", feed.Name())
+	}
+
+	concurrencyLimiter := semaphore.NewWeighted(2)
+
+	scraper, err := scraper.AddParametrized(s.scrapers, feed)
+	if err != nil {
+		return err
 	}
 
 	s.register(path, func(ctx context.Context, writer http.ResponseWriter, request *http.Request) {
@@ -76,7 +79,15 @@ func RegisterParametrized[P feed.Params](s *Server, feed feed.ParametrizedFeed[P
 			return
 		}
 
-		// FIXME(konishchev): Context cancellation + locks
+		if !concurrencyLimiter.TryAcquire(1) {
+			logging.L(ctx).Debugf("Delaying %s scraping due to concurrency limit...", feed.Name())
+			if err := concurrencyLimiter.Acquire(ctx, 1); err != nil {
+				logging.L(ctx).Debugf("Cancelling %s scraping: %s.", feed.Name(), err)
+				return
+			}
+		}
+		defer concurrencyLimiter.Release(1)
+
 		result := scraper.Scrape(ctx, *params)
 		result.Write(writer)
 	})
